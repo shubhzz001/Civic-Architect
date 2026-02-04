@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Civic Architect</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      body {
+        font-family: 'Inter', sans-serif;
+        background-color: #020617; /* slate-950 */
+        color: #f8fafc;
+      }
+      /* Custom scrollbar for cleaner look in cards */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #334155; /* slate-700 */
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #475569; /* slate-600 */
+      }
+
+      /* PRINT / PDF STYLES */
+      #print-mount {
+        display: none;
+      }
+
+      @media print {
+        @page { 
+            margin: 1.5cm; 
+            size: auto; 
+        }
+        
+        * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color-adjust: exact !important;
+        }
+
+        /* Reset fundamental styles for the page */
+        html, body {
+            background-color: white !important;
+            color: black !important;
+            height: auto !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
+            display: block !important;
+        }
+
+        /* Hide the entire React App Root and any other fixed UI */
+        #root, .no-print, [role="tooltip"], .sticky-header {
+            display: none !important;
+            visibility: hidden !important;
+            height: 0 !important;
+            overflow: hidden !important;
+        }
+
+        /* Show the Print Mount */
+        #print-mount {
+            display: block !important;
+            background-color: white !important;
+            color: black !important;
+            width: 100% !important;
+            height: auto !important;
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            visibility: visible !important;
+        }
+
+        /* Utility fixes for print */
+        .page-break { page-break-before: always; }
+        .no-break { page-break-inside: avoid; }
+        
+        /* Ensure images print */
+        img {
+            max-width: 100% !important;
+            display: block !important;
+        }
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom": "https://esm.sh/react-dom@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.37.0",
+    "recharts": "https://esm.sh/recharts@^3.6.0",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "react/": "https://esm.sh/react@^19.2.4/"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+    <div id="print-mount"></div>
+  </body>
+</html>
