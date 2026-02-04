@@ -1,4 +1,5 @@
-import { GoogleGenAI, Type, Schema } from "@google/genai";
+
+import { GoogleGenAI, Type, Schema, Modality } from "@google/genai";
 import { PolicyAnalysis, Source, InputEvidence, Stakeholder } from "../types";
 
 // Define the expected output schema for the analysis
@@ -235,6 +236,7 @@ export const generateImpactImage = async (prompt: string): Promise<string | null
     }
 }
 
+// Fix audio generation modality to use the Modality enum
 export const generateSpeech = async (text: string): Promise<string | null> => {
   if (!process.env.API_KEY) throw new Error("API Key not found");
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -247,7 +249,7 @@ export const generateSpeech = async (text: string): Promise<string | null> => {
           model: "gemini-2.5-flash-preview-tts",
           contents: { parts: [{ text: text }] },
           config: {
-              responseModalities: ["AUDIO"],
+              responseModalities: [Modality.AUDIO],
               speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } }
           }
       });
@@ -262,6 +264,7 @@ export const generateSpeech = async (text: string): Promise<string | null> => {
   }
 }
 
+// Fix stakeholder audio generation modality to use the Modality enum
 export const generateStakeholderSpeech = async (stakeholder: Stakeholder): Promise<string | null> => {
   if (!process.env.API_KEY) throw new Error("API Key not found");
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -278,7 +281,7 @@ export const generateStakeholderSpeech = async (stakeholder: Stakeholder): Promi
           model: "gemini-2.5-flash-preview-tts",
           contents: { parts: [{ text: prompt }] },
           config: {
-              responseModalities: ["AUDIO"],
+              responseModalities: [Modality.AUDIO],
               speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } } }
           }
       });

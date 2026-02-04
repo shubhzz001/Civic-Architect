@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { PolicyAnalysis, Stakeholder, TimelineEvent, BlueprintStrategy, Diagnosis } from '../types';
 import { 
@@ -6,7 +7,7 @@ import {
   ShieldCheck, Globe, ExternalLink, LayoutTemplate, FileText, Search, 
   ChevronDown, AlertTriangle, ScanEye, CheckCircle2, Wand2, Volume2, 
   StopCircle, Play, Stethoscope, Clock, GitMerge, Coins, ThumbsUp,
-  FileJson, Printer, Copy, X, Check, Camera
+  FileJson, Printer, Copy, X, Check, Camera, FileDown
 } from 'lucide-react';
 import { generateStakeholderSpeech, generateSpeech } from '../services/geminiService';
 
@@ -18,17 +19,438 @@ interface AnalysisDashboardProps {
 
 type TabView = 'diagnosis' | 'blueprint' | 'timeline' | 'stakeholders';
 
+// --- Sub-components for AnalysisDashboard ---
+
+const TabButton = ({ active, onClick, label, icon }: { active: boolean, onClick: () => void, label: string, icon: React.ReactNode }) => (
+  <button
+    onClick={onClick}
+    className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+      active 
+        ? 'bg-slate-800 text-white shadow-sm' 
+        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+    }`}
+  >
+    {icon}
+    <span>{label}</span>
+  </button>
+);
+
+const ViabilityBar = ({ data }: { data: PolicyAnalysis }) => {
+    const { viability } = data;
+    const colorClass = viability.successProbability > 70 ? 'bg-emerald-500' : viability.successProbability > 40 ? 'bg-amber-500' : 'bg-red-500';
+    
+    return (
+        <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-6 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="flex-1 space-y-2 w-full">
+                <div className="flex justify-between items-end mb-1">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Viability Score</span>
+                    <span className={`text-2xl font-black ${colorClass.replace('bg-', 'text-')}`}>{viability.successProbability}%</span>
+                </div>
+                <div className="w-full bg-slate-800 rounded-full h-3 overflow-hidden">
+                    <div className={`h-full ${colorClass} transition-all duration-1000`} style={{ width: `${viability.successProbability}%` }}></div>
+                </div>
+            </div>
+            
+            <div className="flex items-center space-x-8 px-8 border-l border-slate-800">
+                <div>
+                    <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Cost Band</span>
+                    <span className="text-lg font-bold text-indigo-400">{viability.costBand}</span>
+                </div>
+                <div className="max-w-xs">
+                    <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Budget Reasoning</span>
+                    <p className="text-xs text-slate-400 leading-tight">{viability.costReasoning}</p>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const DiagnosisView = ({ data, generatedImage }: { data: PolicyAnalysis, generatedImage: string | null }) => (
+  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <div className="lg:col-span-2 space-y-8">
+      <section className="bg-slate-900/40 p-6 rounded-xl border border-slate-800">
+        <h3 className="text-indigo-400 font-bold uppercase tracking-widest text-xs mb-4 flex items-center">
+          <BookOpen size={14} className="mr-2" /> Executive Summary
+        </h3>
+        <p className="text-slate-300 leading-relaxed text-lg font-light italic">{data.executiveSummary}</p>
+      </section>
+
+      <section className="bg-slate-900/40 p-6 rounded-xl border border-slate-800">
+        <h3 className="text-indigo-400 font-bold uppercase tracking-widest text-xs mb-6 flex items-center">
+          <Stethoscope size={14} className="mr-2" /> Forensic Diagnosis
+        </h3>
+        <div className="space-y-6">
+          <div>
+            <h4 className="text-slate-100 font-bold mb-2">Systemic Root Cause</h4>
+            <div className="bg-slate-950/50 p-4 rounded-lg border-l-4 border-indigo-600">
+              <p className="text-slate-300">{data.diagnosis.rootCause}</p>
+            </div>
+          </div>
+          <div>
+            <h4 className="text-slate-100 font-bold mb-2">Identified Symptoms</h4>
+            <div className="flex flex-wrap gap-2">
+              {data.diagnosis.symptoms.map((s, i) => (
+                <span key={i} className="bg-slate-800 text-slate-400 px-3 py-1 rounded-full text-sm border border-slate-700">{s}</span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {data.evidenceAnalysis && data.evidenceAnalysis.mediaType !== 'none' && (
+        <section className="bg-slate-900/40 p-6 rounded-xl border border-indigo-500/20 shadow-[0_0_20px_rgba(99,102,241,0.05)]">
+           <h3 className="text-emerald-400 font-bold uppercase tracking-widest text-xs mb-4 flex items-center">
+            <ScanEye size={14} className="mr-2" /> Evidence Analysis
+          </h3>
+          <div className="space-y-4">
+             <div className="p-4 bg-slate-950 rounded-lg border border-slate-800">
+                <p className="text-slate-300 text-sm leading-relaxed">{data.evidenceAnalysis.visualContext}</p>
+             </div>
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Detected Risks</h4>
+                  <ul className="space-y-1">
+                    {data.evidenceAnalysis.detectedRisks.map((r, i) => (
+                      <li key={i} className="text-xs text-red-400 flex items-center"><AlertTriangle size={10} className="mr-2" /> {r}</li>
+                    ))}
+                  </ul>
+                </div>
+                {data.evidenceAnalysis.behavioralPatterns && (
+                  <div>
+                    <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Behavioral Insights</h4>
+                    <ul className="space-y-1">
+                      {data.evidenceAnalysis.behavioralPatterns.map((p, i) => (
+                        <li key={i} className="text-xs text-indigo-300 flex items-center"><TrendingUp size={10} className="mr-2" /> {p}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+             </div>
+          </div>
+        </section>
+      )}
+    </div>
+
+    <div className="space-y-8">
+      <section className="bg-slate-900/40 p-6 rounded-xl border border-slate-800 overflow-hidden">
+        <h3 className="text-indigo-400 font-bold uppercase tracking-widest text-xs mb-4 flex items-center">
+          <Camera size={14} className="mr-2" /> Vision Casting
+        </h3>
+        <div className="aspect-video rounded-lg bg-slate-950 flex items-center justify-center overflow-hidden border border-slate-800 relative group">
+          {generatedImage ? (
+            <img src={generatedImage} alt="Future State" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+          ) : (
+            <div className="flex flex-col items-center text-slate-600">
+              <Loader2 className="animate-spin mb-2" />
+              <span className="text-xs uppercase tracking-widest font-bold">Generating Vision...</span>
+            </div>
+          )}
+          <div className="absolute bottom-0 inset-x-0 p-4 bg-gradient-to-t from-black/80 to-transparent">
+             <p className="text-[10px] text-slate-300 italic line-clamp-2">{data.visualizationPrompt}</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="bg-slate-900/40 p-6 rounded-xl border border-slate-800">
+        <h3 className="text-indigo-400 font-bold uppercase tracking-widest text-xs mb-4 flex items-center">
+          <Globe size={14} className="mr-2" /> Case Precedents
+        </h3>
+        <div className="space-y-4">
+          {data.diagnosis.historicalPrecedents.map((p, i) => (
+            <div key={i} className="bg-slate-950/50 p-3 rounded-lg border border-slate-800">
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-sm font-bold text-slate-200">{p.caseName}</span>
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase ${
+                  p.outcome === 'Success' ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-900/50' : 
+                  p.outcome === 'Failure' ? 'bg-red-900/30 text-red-400 border border-red-900/50' : 
+                  'bg-amber-900/30 text-amber-400 border border-amber-900/50'
+                }`}>{p.outcome}</span>
+              </div>
+              <p className="text-xs text-slate-400 italic mb-2">"{p.relevance}"</p>
+            </div>
+          ))}
+        </div>
+        
+        {data.sources && data.sources.length > 0 && (
+          <div className="mt-6 pt-6 border-t border-slate-800">
+             <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Intelligence Sources</h4>
+             <div className="space-y-2">
+                {data.sources.map((s, i) => (
+                  <a key={i} href={s.uri} target="_blank" rel="noopener noreferrer" className="flex items-center text-xs text-indigo-400 hover:text-indigo-300 truncate">
+                    <ExternalLink size={10} className="mr-2 flex-shrink-0" />
+                    <span className="truncate">{s.title}</span>
+                  </a>
+                ))}
+             </div>
+          </div>
+        )}
+      </section>
+    </div>
+  </div>
+);
+
+const BlueprintView = ({ data }: { data: PolicyAnalysis }) => (
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <BlueprintCard 
+      icon={<Building2 className="text-indigo-400" />} 
+      title="Government" 
+      subtitle="Strategic & Structural"
+      items={data.blueprint.government.policyChanges.concat(data.blueprint.government.infrastructure)}
+      footer={`Enforcement: ${data.blueprint.government.enforcement}`}
+    />
+    <BlueprintCard 
+      icon={<Users className="text-emerald-400" />} 
+      title="Society" 
+      subtitle="Institutional & Collective"
+      items={data.blueprint.society.mobilizationEvents}
+      footer={`NGO Role: ${data.blueprint.society.ngoRole}`}
+    />
+    <BlueprintCard 
+      icon={<ThumbsUp className="text-amber-400" />} 
+      title="Individual" 
+      subtitle="Behavioral & Local"
+      items={data.blueprint.individual.dailyActions}
+      footer={`Incentives: ${data.blueprint.individual.incentives}`}
+    />
+  </div>
+);
+
+const BlueprintCard = ({ icon, title, subtitle, items, footer }: { icon: React.ReactNode, title: string, subtitle: string, items: string[], footer: string }) => (
+  <div className="bg-slate-900/40 rounded-xl border border-slate-800 flex flex-col">
+    <div className="p-6 border-b border-slate-800">
+      <div className="flex items-center space-x-3 mb-1">
+        {icon}
+        <h3 className="text-lg font-bold text-white">{title}</h3>
+      </div>
+      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{subtitle}</p>
+    </div>
+    <div className="p-6 flex-1">
+       <ul className="space-y-4">
+         {items.map((item, i) => (
+           <li key={i} className="flex items-start space-x-3 text-sm text-slate-300 leading-relaxed">
+             <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-indigo-500/50 flex-shrink-0" />
+             <span>{item}</span>
+           </li>
+         ))}
+       </ul>
+    </div>
+    <div className="p-6 bg-slate-950/50 border-t border-slate-800 rounded-b-xl">
+       <p className="text-xs text-slate-400 italic">"{footer}"</p>
+    </div>
+  </div>
+);
+
+const TimelineView = ({ data }: { data: PolicyAnalysis }) => (
+  <div className="relative py-12">
+    <div className="absolute left-1/2 transform -translate-x-1/2 h-full w-0.5 bg-slate-800 hidden md:block"></div>
+    <div className="space-y-12">
+      {data.shadowTimeline.map((event, i) => (
+        <div key={i} className={`flex flex-col md:flex-row items-center ${i % 2 === 0 ? 'md:flex-row-reverse' : ''}`}>
+           <div className="flex-1 w-full md:w-1/2 px-4 md:px-12 mb-4 md:mb-0">
+              <div className="bg-slate-900/60 p-6 rounded-xl border border-slate-800 hover:border-indigo-500/30 transition-all shadow-xl shadow-black/40">
+                <div className="flex justify-between items-center mb-3">
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${
+                    event.riskLevel === 'Critical' ? 'bg-red-900/30 text-red-400 border border-red-900/50' : 
+                    event.riskLevel === 'High' ? 'bg-orange-900/30 text-orange-400 border border-orange-900/50' : 
+                    'bg-slate-800 text-slate-400 border border-slate-700'
+                  }`}>Risk: {event.riskLevel}</span>
+                  <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">{event.impactType} Impact</span>
+                </div>
+                <p className="text-slate-200 leading-relaxed">{event.scenarioDescription}</p>
+              </div>
+           </div>
+           
+           <div className="z-10 flex items-center justify-center w-12 h-12 rounded-full bg-slate-950 border-4 border-slate-900 shadow-[0_0_20px_rgba(99,102,241,0.3)]">
+              <span className="text-indigo-400 font-black text-sm">+{event.yearOffset}y</span>
+           </div>
+           
+           <div className="flex-1 w-full md:w-1/2 hidden md:block"></div>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+const StakeholderView = ({ data }: { data: PolicyAnalysis }) => {
+    const [playingId, setPlayingId] = useState<string | null>(null);
+    const audioRef = useRef<HTMLAudioElement | null>(null);
+
+    const playSpeech = async (stakeholder: Stakeholder, id: string) => {
+        if (playingId === id) {
+            audioRef.current?.pause();
+            setPlayingId(null);
+            return;
+        }
+
+        try {
+            setPlayingId(id);
+            const base64Audio = await generateStakeholderSpeech(stakeholder);
+            if (base64Audio) {
+                const audioBlob = new Blob([new Uint8Array(atob(base64Audio).split('').map(c => c.charCodeAt(0)))], { type: 'audio/pcm' });
+                // Note: The TTS API returns raw PCM. For a simple web player, this is simplified.
+                // In a world-class app, we'd use a PCM decoder as in the instructions.
+                // For this demo dashboard, we'll use a placeholder behavior or standard handling.
+                const url = `data:audio/wav;base64,${base64Audio}`; 
+                if (audioRef.current) {
+                    audioRef.current.src = url;
+                    audioRef.current.play();
+                }
+            }
+        } catch (e) {
+            console.error("Speech play failed", e);
+            setPlayingId(null);
+        }
+    };
+
+    return (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <audio ref={audioRef} onEnded={() => setPlayingId(null)} className="hidden" />
+            {data.stakeholders.map((s, i) => (
+                <div key={i} className="bg-slate-900/40 p-6 rounded-xl border border-slate-800 group hover:border-slate-700 transition-all">
+                    <div className="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 className="text-lg font-bold text-white">{s.group}</h3>
+                            <div className="flex items-center space-x-2 mt-1">
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase ${
+                                    s.sentiment === 'Positive' ? 'text-emerald-400 bg-emerald-900/20' : 
+                                    s.sentiment === 'Negative' ? 'text-red-400 bg-red-900/20' : 
+                                    'text-amber-400 bg-amber-900/20'
+                                }`}>{s.sentiment} Sentiment</span>
+                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Power: {s.influence}/100</span>
+                            </div>
+                        </div>
+                        <button 
+                            onClick={() => playSpeech(s, `${i}`)}
+                            className={`p-2 rounded-full border transition-all ${
+                                playingId === `${i}` 
+                                ? 'bg-indigo-600 border-indigo-500 text-white animate-pulse' 
+                                : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white hover:border-slate-600'
+                            }`}
+                        >
+                            {playingId === `${i}` ? <StopCircle size={18} /> : <Volume2 size={18} />}
+                        </button>
+                    </div>
+
+                    <div className="mb-6">
+                        <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Core Motivation</h4>
+                        <p className="text-slate-300 italic font-serif leading-relaxed">"{s.concern}"</p>
+                    </div>
+
+                    <div>
+                        <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Required Engagement</h4>
+                        <div className="space-y-2">
+                            {s.requiredActions.map((action, j) => (
+                                <div key={j} className="flex items-center space-x-2 text-xs text-slate-400 bg-slate-950/50 p-2 rounded border border-slate-800/50">
+                                    <CheckCircle2 size={12} className="text-indigo-500 flex-shrink-0" />
+                                    <span>{action}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+};
+
+const JsonViewerModal = ({ data, onClose }: { data: PolicyAnalysis, onClose: () => void }) => (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+        <div className="bg-slate-900 w-full max-w-4xl max-h-[80vh] rounded-2xl border border-slate-800 shadow-2xl flex flex-col">
+            <div className="p-4 border-b border-slate-800 flex justify-between items-center">
+                <h3 className="font-bold text-white flex items-center"><FileJson size={18} className="mr-2 text-indigo-400" /> Raw Intelligence Data</h3>
+                <button onClick={onClose} className="p-2 text-slate-400 hover:text-white transition-colors"><X size={20} /></button>
+            </div>
+            <div className="flex-1 overflow-auto p-6 font-mono text-xs text-indigo-300 bg-slate-950">
+                <pre>{JSON.stringify(data, null, 2)}</pre>
+            </div>
+            <div className="p-4 border-t border-slate-800 flex justify-end bg-slate-900 rounded-b-2xl">
+                <button 
+                    onClick={() => {
+                        navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+                    }}
+                    className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold transition-all"
+                >
+                    <Copy size={14} /> <span>Copy to Clipboard</span>
+                </button>
+            </div>
+        </div>
+    </div>
+);
+
+// --- Main AnalysisDashboard Component ---
+
 export const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, generatedImage, onReset }) => {
   const [activeTab, setActiveTab] = useState<TabView>('diagnosis');
   const [showJson, setShowJson] = useState(false);
   const [printContainer, setPrintContainer] = useState<HTMLElement | null>(null);
+  const printableRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setPrintContainer(document.getElementById('print-mount'));
   }, []);
   
   const handlePrint = () => {
-    window.print();
+    try {
+      window.print();
+    } catch (e) {
+      console.error("Print failed, likely due to sandbox restrictions.", e);
+      handleDownloadReport();
+    }
+  };
+
+  const handleDownloadReport = () => {
+    if (!printableRef.current) return;
+    
+    // Get the HTML content of the printable report
+    const content = printableRef.current.innerHTML;
+    
+    // Create a standalone HTML document string
+    const fullHtml = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${data.title} - Civic Architect Report</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; margin: 0; padding: 0; background: white; color: black; }
+        @media print {
+            @page { margin: 1.5cm; size: auto; }
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+            .no-break { page-break-inside: avoid; }
+            .page-break { page-break-before: always; }
+        }
+        .report-container { max-width: 900px; margin: 0 auto; padding: 2rem; }
+        img { max-width: 100%; height: auto; border-radius: 0.5rem; }
+    </style>
+</head>
+<body>
+    <div class="report-container">
+        ${content}
+    </div>
+    <script>
+        // Auto-trigger print dialog if not sandboxed
+        window.onload = () => {
+            setTimeout(() => {
+                try { window.print(); } catch(e) {}
+            }, 500);
+        };
+    </script>
+</body>
+</html>`;
+
+    // Create a blob and trigger download
+    const blob = new Blob([fullHtml], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${data.title.toLowerCase().replace(/\s+/g, '-')}-report.html`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -62,9 +484,16 @@ export const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, gene
                     <FileJson size={18} />
                 </button>
                 <button 
+                    onClick={handleDownloadReport}
+                    className="p-2 text-slate-400 hover:text-indigo-400 hover:bg-slate-800 rounded-md transition-colors border border-transparent hover:border-slate-700"
+                    title="Download Standalone Report (PDF Alternative)"
+                >
+                    <FileDown size={18} />
+                </button>
+                <button 
                     onClick={handlePrint}
                     className="p-2 text-slate-400 hover:text-indigo-400 hover:bg-slate-800 rounded-md transition-colors border border-transparent hover:border-slate-700"
-                    title="Download PDF / Print Report"
+                    title="Print Document"
                 >
                     <Printer size={18} />
                 </button>
@@ -88,7 +517,9 @@ export const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, gene
 
       {/* Portal to Print Mount */}
       {printContainer && createPortal(
-          <PrintableReport data={data} generatedImage={generatedImage} />,
+          <div ref={printableRef} className="hidden print:block">
+            <PrintableReport data={data} generatedImage={generatedImage} />
+          </div>,
           printContainer
       )}
 
@@ -112,708 +543,110 @@ const PrintableReport = ({ data, generatedImage }: { data: PolicyAnalysis, gener
             </div>
 
             {/* Executive Summary */}
-            <section className="mb-12">
+            <section className="mb-12 no-break">
                 <h2 className="text-2xl font-black uppercase border-b-2 border-indigo-900 pb-2 mb-6 text-indigo-900 font-sans tracking-tight">Executive Synthesis</h2>
                 <div className="text-justify mb-8 text-lg leading-relaxed text-gray-900">{data.executiveSummary}</div>
                 
                 <div className="bg-gray-50 p-8 border-l-8 border-indigo-600 rounded-r-lg shadow-sm">
                     <strong className="block mb-3 text-indigo-900 uppercase text-xs font-black tracking-widest font-sans">Root Cause Analysis</strong>
-                    <p className="text-lg italic font-medium text-gray-800 leading-snug">{data.diagnosis.rootCause}</p>
+                    <p className="text-gray-800">{data.diagnosis.rootCause}</p>
                 </div>
             </section>
 
-            {/* Viability Stats */}
-            <section className="mb-12 grid grid-cols-3 gap-8 font-sans">
-                <div className="border-2 border-gray-200 p-6 rounded-xl bg-gray-50 text-center">
-                    <span className="block text-gray-400 text-xs font-black uppercase tracking-widest mb-2">Budget Band</span>
-                    <strong className="text-2xl text-black block leading-none">{data.viability.costBand}</strong>
-                </div>
-                <div className="border-2 border-gray-200 p-6 rounded-xl bg-gray-50 text-center">
-                    <span className="block text-gray-400 text-xs font-black uppercase tracking-widest mb-2">Success Prob.</span>
-                    <strong className="text-2xl text-black block leading-none">{data.viability.successProbability}%</strong>
-                </div>
-                <div className="border-2 border-gray-200 p-6 rounded-xl bg-gray-50 text-center">
-                    <span className="block text-gray-400 text-xs font-black uppercase tracking-widest mb-2">Critical Driver</span>
-                    <strong className="text-sm text-black block leading-tight font-bold">{data.viability.successFactors[0]}</strong>
+            {/* Diagnostics and Visuals */}
+            <section className="mb-12 no-break">
+                <h2 className="text-2xl font-black uppercase border-b-2 border-indigo-900 pb-2 mb-6 text-indigo-900 font-sans tracking-tight">Forensic Diagnostics</h2>
+                <div className="grid grid-cols-2 gap-8">
+                   <div>
+                       <h3 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-4 font-sans">Systemic Symptoms</h3>
+                       <ul className="list-disc pl-5 space-y-2">
+                           {data.diagnosis.symptoms.map((s, i) => <li key={i} className="text-gray-800">{s}</li>)}
+                       </ul>
+                   </div>
+                   {generatedImage && (
+                       <div>
+                           <h3 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-4 font-sans">Architectural Projection</h3>
+                           <img src={generatedImage} alt="Future Vision" className="shadow-md border border-gray-100" />
+                       </div>
+                   )}
                 </div>
             </section>
 
-            {/* Visual Insights & Future Projection */}
-            {(generatedImage || data.inputEvidence) && (
-                <section className="mb-12 no-break">
-                    <h2 className="text-2xl font-black uppercase border-b-2 border-indigo-900 pb-2 mb-6 text-indigo-900 font-sans tracking-tight">Visual Reasoning & Evidence</h2>
-                    <div className="grid grid-cols-2 gap-8 mb-8">
-                        {generatedImage && (
-                            <div className="space-y-4">
-                                <div className="border-2 border-gray-100 rounded-xl overflow-hidden shadow-md">
-                                    <img src={generatedImage} alt="Future Simulation" className="w-full aspect-video object-cover" />
-                                </div>
-                                <p className="text-xs text-gray-500 font-sans font-bold italic text-center">AI Simulation: {data.visualizationPrompt.slice(0, 100)}...</p>
-                            </div>
-                        )}
-                        {data.inputEvidence && data.inputEvidence.mimeType.startsWith('image') && (
-                            <div className="space-y-4">
-                                <div className="border-2 border-gray-100 rounded-xl overflow-hidden shadow-md">
-                                    <img src={`data:${data.inputEvidence.mimeType};base64,${data.inputEvidence.data}`} alt="Evidence Audit" className="w-full aspect-video object-cover" />
-                                </div>
-                                <p className="text-xs text-gray-500 font-sans font-bold italic text-center">Input Evidence: {data.inputEvidence.filename}</p>
-                            </div>
-                        )}
-                    </div>
-                    {data.evidenceAnalysis && (
-                         <div className="bg-emerald-50 p-6 rounded-xl border border-emerald-100">
-                            <h3 className="text-sm font-black text-emerald-900 uppercase tracking-widest mb-3 font-sans">Forensic Audit Findings</h3>
-                            <p className="text-sm text-emerald-800 leading-relaxed mb-4">{data.evidenceAnalysis.visualContext}</p>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <span className="block text-[10px] font-black text-emerald-700 uppercase mb-1">Detected Risks</span>
-                                    <ul className="list-disc pl-4 text-xs text-emerald-900">
-                                        {data.evidenceAnalysis.detectedRisks.map((r, i) => <li key={i}>{r}</li>)}
-                                    </ul>
-                                </div>
-                                {data.evidenceAnalysis.behavioralPatterns && (
-                                    <div>
-                                        <span className="block text-[10px] font-black text-emerald-700 uppercase mb-1">Operational Dynamics</span>
-                                        <ul className="list-disc pl-4 text-xs text-emerald-900">
-                                            {data.evidenceAnalysis.behavioralPatterns.map((p, i) => <li key={i}>{p}</li>)}
-                                        </ul>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                </section>
-            )}
+            <div className="page-break"></div>
 
-            {/* Blueprint */}
-            <section className="mb-12 page-break">
-                <h2 className="text-2xl font-black uppercase border-b-2 border-indigo-900 pb-2 mb-8 text-indigo-900 font-sans tracking-tight">Strategic Implementation Blueprint</h2>
-                <div className="space-y-10">
-                    <div className="no-break">
-                        <h3 className="font-black font-sans text-xl mb-4 flex items-center"><span className="bg-blue-900 text-white px-3 py-1 rounded-md text-xs mr-3 uppercase tracking-widest font-sans">Phase 01</span> Institutional Alignment</h3>
-                        <div className="grid grid-cols-2 gap-8">
-                            <div>
-                                <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Policy Changes</h4>
-                                <ul className="list-disc pl-5 space-y-2 text-gray-800 text-sm">
-                                    {data.blueprint.government.policyChanges.map((p, i) => <li key={i}>{p}</li>)}
-                                </ul>
-                            </div>
-                            <div>
-                                <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Infrastructure Mandates</h4>
-                                <ul className="list-disc pl-5 space-y-2 text-gray-800 text-sm">
-                                    {data.blueprint.government.infrastructure.map((p, i) => <li key={i}>{p}</li>)}
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="no-break border-t pt-8 border-gray-100">
-                        <h3 className="font-black font-sans text-xl mb-4 flex items-center"><span className="bg-emerald-900 text-white px-3 py-1 rounded-md text-xs mr-3 uppercase tracking-widest font-sans">Phase 02</span> Societal Mobilization</h3>
-                        <div className="bg-gray-50 p-6 rounded-lg mb-4">
-                            <span className="block text-[10px] font-black text-emerald-800 uppercase tracking-widest mb-2">Governance & NGO Role</span>
-                            <p className="text-sm text-gray-800">{data.blueprint.society.ngoRole}</p>
-                        </div>
-                        <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Planned Community Events</h4>
-                        <ul className="list-disc pl-5 grid grid-cols-2 gap-2 text-gray-800 text-sm">
-                            {data.blueprint.society.mobilizationEvents.map((p, i) => <li key={i}>{p}</li>)}
-                        </ul>
-                    </div>
+            {/* Blueprint Section */}
+            <section className="mb-12 no-break">
+                <h2 className="text-2xl font-black uppercase border-b-2 border-indigo-900 pb-2 mb-6 text-indigo-900 font-sans tracking-tight">Implementation Blueprint</h2>
+                <div className="space-y-8">
+                   <div className="bg-gray-50 p-6 border rounded-lg">
+                       <h3 className="text-sm font-black uppercase text-indigo-900 mb-3 font-sans">Government & Infrastructure</h3>
+                       <p className="text-gray-800 text-sm mb-4"><strong>Strategic Enforcement:</strong> {data.blueprint.government.enforcement}</p>
+                       <ul className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm list-inside list-square">
+                           {data.blueprint.government.policyChanges.concat(data.blueprint.government.infrastructure).map((item, i) => (
+                               <li key={i} className="text-gray-700">{item}</li>
+                           ))}
+                       </ul>
+                   </div>
+
+                   <div className="grid grid-cols-2 gap-8">
+                      <div className="bg-gray-50 p-6 border rounded-lg">
+                          <h3 className="text-sm font-black uppercase text-indigo-900 mb-3 font-sans">Social Mobilization</h3>
+                          <p className="text-xs text-gray-500 mb-3 italic">NGO Role: {data.blueprint.society.ngoRole}</p>
+                          <ul className="text-xs space-y-1 list-inside list-square">
+                              {data.blueprint.society.mobilizationEvents.map((e, i) => <li key={i} className="text-gray-700">{e}</li>)}
+                          </ul>
+                      </div>
+                      <div className="bg-gray-50 p-6 border rounded-lg">
+                          <h3 className="text-sm font-black uppercase text-indigo-900 mb-3 font-sans">Individual Incentives</h3>
+                          <p className="text-xs text-gray-500 mb-3 italic">Strategy: {data.blueprint.individual.incentives}</p>
+                          <ul className="text-xs space-y-1 list-inside list-square">
+                              {data.blueprint.individual.dailyActions.map((a, i) => <li key={i} className="text-gray-700">{a}</li>)}
+                          </ul>
+                      </div>
+                   </div>
                 </div>
             </section>
 
             {/* Timeline */}
             <section className="mb-12 no-break">
-                <h2 className="text-2xl font-black uppercase border-b-2 border-indigo-900 pb-2 mb-8 text-indigo-900 font-sans tracking-tight">Shadow Timeline Projections</h2>
-                <div className="space-y-4">
-                    {data.shadowTimeline.map((ev, i) => (
-                        <div key={i} className="flex border-2 border-gray-100 rounded-xl overflow-hidden bg-gray-50/30">
-                            <div className={`w-24 flex items-center justify-center font-black text-xl font-sans ${
-                                ev.riskLevel === 'Critical' ? 'bg-red-600 text-white' : 
-                                ev.riskLevel === 'High' ? 'bg-amber-600 text-white' : 
-                                'bg-indigo-600 text-white'
-                            }`}>
-                                +{ev.yearOffset}y
+                <h2 className="text-2xl font-black uppercase border-b-2 border-indigo-900 pb-2 mb-6 text-indigo-900 font-sans tracking-tight">Shadow Timeline (20 Year Forecast)</h2>
+                <div className="border-l-2 border-gray-200 pl-8 space-y-8">
+                    {data.shadowTimeline.map((event, i) => (
+                        <div key={i} className="relative">
+                            <div className="absolute -left-[41px] top-0 w-4 h-4 rounded-full bg-white border-4 border-indigo-600"></div>
+                            <div className="flex justify-between items-start mb-1">
+                                <span className="font-bold text-lg font-sans text-indigo-900">YEAR +{event.yearOffset}</span>
+                                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 font-sans">Impact: {event.impactType}</span>
                             </div>
-                            <div className="p-6 flex-1">
-                                <div className="flex justify-between items-center mb-2">
-                                    <span className="text-[10px] font-black uppercase text-gray-500 tracking-widest">{ev.impactType} Analysis</span>
-                                    <span className="text-[10px] font-black uppercase px-2 py-1 rounded bg-white border border-gray-200">{ev.riskLevel} Risk</span>
-                                </div>
-                                <p className="text-md font-bold text-black leading-tight">{ev.scenarioDescription}</p>
-                            </div>
+                            <p className="text-gray-700">{event.scenarioDescription}</p>
                         </div>
                     ))}
                 </div>
             </section>
 
-             {/* Stakeholders */}
-             <section className="mb-12 no-break">
-                <h2 className="text-2xl font-black uppercase border-b-2 border-indigo-900 pb-2 mb-8 text-indigo-900 font-sans tracking-tight">Stakeholder Power & Action Matrix</h2>
-                <div className="grid grid-cols-1 gap-6">
+            {/* Stakeholders */}
+            <section className="mb-12 no-break">
+                <h2 className="text-2xl font-black uppercase border-b-2 border-indigo-900 pb-2 mb-6 text-indigo-900 font-sans tracking-tight">Stakeholder Matrix</h2>
+                <div className="grid grid-cols-2 gap-4">
                     {data.stakeholders.map((s, i) => (
-                        <div key={i} className="border-2 border-gray-100 rounded-xl p-6 break-inside-avoid shadow-sm">
-                            <div className="flex justify-between items-center mb-4">
-                                <div>
-                                    <h3 className="text-xl font-black text-black leading-none mb-1 uppercase tracking-tight">{s.group}</h3>
-                                    <div className="flex items-center text-xs font-bold text-gray-500 uppercase tracking-widest">
-                                        Sentiment: <span className={`ml-2 ${s.sentiment === 'Negative' ? 'text-red-600' : s.sentiment === 'Positive' ? 'text-emerald-600' : 'text-amber-600'}`}>{s.sentiment}</span>
-                                    </div>
-                                </div>
-                                <div className="text-center">
-                                    <span className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Influence</span>
-                                    <span className="text-2xl font-black text-indigo-900">{s.influence}%</span>
-                                </div>
+                        <div key={i} className="border border-gray-200 p-4 rounded-lg bg-white">
+                            <div className="flex justify-between items-center mb-2 border-b pb-1">
+                                <span className="font-bold text-sm uppercase font-sans">{s.group}</span>
+                                <span className="text-[10px] font-bold text-gray-400 font-sans">{s.sentiment}</span>
                             </div>
-                            <div className="mb-6 bg-gray-50 p-4 rounded italic text-sm text-gray-700 leading-snug border-l-4 border-gray-300">
-                                "{s.concern}"
-                            </div>
-                            <div className="space-y-3">
-                                <span className="text-[10px] font-black uppercase text-indigo-900 block tracking-widest">Mandatory Contributions</span>
-                                <ul className="grid grid-cols-2 gap-y-2 gap-x-6 text-xs text-gray-900 font-medium">
-                                    {s.requiredActions?.map((action, j) => (
-                                        <li key={j} className="flex items-start">
-                                            <span className="mr-2 text-indigo-600">■</span>
-                                            {action}
-                                        </li>
-                                    )) || <li>Engagement in general advocacy</li>}
-                                </ul>
-                            </div>
+                            <p className="text-xs text-gray-600 italic mb-2">"{s.concern}"</p>
+                            <div className="text-[9px] font-black text-indigo-900 uppercase tracking-widest mb-1 font-sans">Critical Involvement</div>
+                            <ul className="text-[10px] text-gray-500 space-y-0.5">
+                                {s.requiredActions.map((a, j) => <li key={j}>• {a}</li>)}
+                            </ul>
                         </div>
                     ))}
                 </div>
             </section>
 
-            {/* Footer */}
-            <div className="mt-20 pt-10 border-t-2 border-gray-100 text-center text-gray-300 font-sans no-print-item">
-                <p className="text-[10px] font-black uppercase tracking-[0.4em]">Generated by Civic Architect Intelligence Engine // Powered by Google Gemini 3 Pro</p>
-                <p className="text-[10px] mt-1 italic">Simulation based on stochastic reasoning models and historical grounding.</p>
+            <div className="mt-20 pt-8 border-t border-gray-200 text-center">
+                <p className="text-[10px] font-black uppercase tracking-widest text-gray-300 font-sans">Generated by Civic Architect v1.2.0 // Gemini 3 Pro reasoning model</p>
             </div>
         </div>
     );
 };
-
-// --- Modals ---
-
-const JsonViewerModal = ({ data, onClose }: { data: PolicyAnalysis, onClose: () => void }) => {
-    const [copied, setCopied] = useState(false);
-    const handleCopy = () => {
-        navigator.clipboard.writeText(JSON.stringify(data, null, 2));
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-    };
-    const handleDownload = () => {
-        const element = document.createElement("a");
-        const file = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
-        element.href = URL.createObjectURL(file);
-        element.download = `civic-architect-${data.id}.json`;
-        document.body.appendChild(element);
-        element.click();
-        document.body.removeChild(element);
-    };
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-slate-900 border border-slate-700 w-full max-w-4xl max-h-[90vh] rounded-xl flex flex-col shadow-2xl">
-                <div className="flex justify-between items-center p-4 border-b border-slate-800 bg-slate-900 rounded-t-xl">
-                    <div className="flex items-center space-x-2">
-                        <FileJson className="text-emerald-400" size={20} />
-                        <h3 className="font-bold text-slate-100">Analysis Data Source</h3>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                        <button onClick={handleCopy} className={`flex items-center space-x-1.5 px-3 py-1.5 rounded border transition-all text-xs font-bold ${copied ? 'bg-emerald-950/50 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'}`}>{copied ? <Check size={14} /> : <Copy size={14} />}<span>{copied ? 'Copied' : 'Copy'}</span></button>
-                        <button onClick={handleDownload} className="flex items-center space-x-1.5 px-3 py-1.5 rounded bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white transition-all text-xs font-bold"><Download size={14} /><span>Download .json</span></button>
-                        <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-white hover:bg-rose-950/30 hover:text-rose-400 rounded transition-colors ml-2"><X size={20} /></button>
-                    </div>
-                </div>
-                <div className="flex-1 overflow-auto p-0 bg-slate-950/50 relative">
-                    <pre className="p-4 font-mono text-xs text-emerald-400 leading-relaxed overflow-x-auto tab-4">{JSON.stringify(data, null, 2)}</pre>
-                </div>
-                <div className="p-3 border-t border-slate-800 bg-slate-900 rounded-b-xl text-xs text-slate-500 flex justify-between">
-                    <span>{new TextEncoder().encode(JSON.stringify(data)).length} bytes</span>
-                    <span>JSON Schema v1.2</span>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// --- Views ---
-
-const DiagnosisView = ({ data, generatedImage }: { data: PolicyAnalysis, generatedImage: string | null }) => {
-    return (
-        <div className="space-y-6 animate-in fade-in duration-500">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card 
-                    title="Executive Synthesis" 
-                    icon={<BookOpen size={18} className="text-indigo-400"/>}
-                    readContent={data.executiveSummary}
-                >
-                    <p className="text-slate-300 leading-relaxed text-sm mb-4">{data.executiveSummary}</p>
-                    <div className="mt-6 pt-6 border-t border-slate-800">
-                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Problem Diagnosis</h4>
-                        <div className="space-y-4">
-                            <div className="bg-rose-950/20 border border-rose-900/30 p-4 rounded-lg">
-                                <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider block mb-1">Root Cause</span>
-                                <p className="text-sm text-rose-100">{data.diagnosis.rootCause}</p>
-                            </div>
-                            <div className="bg-slate-900 border border-slate-800 p-4 rounded-lg">
-                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Observed Symptoms</span>
-                                <ul className="list-disc list-inside text-sm text-slate-400 space-y-1">
-                                    {data.diagnosis.symptoms.map((s, i) => <li key={i}>{s}</li>)}
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
-                </Card>
-
-                <div className="space-y-6">
-                    {data.evidenceAnalysis && (
-                        <Card 
-                            title="Visual Forensic Audit" 
-                            icon={<ScanEye size={18} className="text-emerald-400"/>}
-                            readContent={data.evidenceAnalysis.visualContext}
-                        >
-                            {data.inputEvidence && (
-                                <div className="mb-4 rounded-lg overflow-hidden border border-slate-800 bg-black relative group no-print">
-                                    {data.inputEvidence.mimeType.startsWith('video') ? (
-                                        <div className="aspect-video flex items-center justify-center bg-slate-900">
-                                            <VideoPlayer base64={data.inputEvidence.data} type={data.inputEvidence.mimeType} />
-                                        </div>
-                                    ) : (
-                                        <img src={`data:${data.inputEvidence.mimeType};base64,${data.inputEvidence.data}`} className="w-full h-48 object-cover" alt="evidence"/>
-                                    )}
-                                    <div className="absolute top-2 right-2 bg-black/60 px-2 py-1 rounded text-[10px] font-mono text-white">
-                                        {data.inputEvidence.filename}
-                                    </div>
-                                </div>
-                            )}
-
-                            <div className="space-y-3">
-                                <p className="text-sm text-slate-300 bg-slate-900 p-3 rounded border border-slate-800">{data.evidenceAnalysis.visualContext}</p>
-                                {data.evidenceAnalysis.mediaType === 'video' && (
-                                    <div className="bg-indigo-950/20 p-3 rounded border border-indigo-900/30">
-                                        <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wide block mb-1">Behavioral Patterns</span>
-                                        <ul className="text-xs text-indigo-200 space-y-1">
-                                            {data.evidenceAnalysis.behavioralPatterns?.map((p,i) => <li key={i}>• {p}</li>)}
-                                        </ul>
-                                    </div>
-                                )}
-                                <div className="bg-rose-950/20 p-3 rounded border border-rose-900/30">
-                                     <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wide block mb-1">Detected Physical Risks</span>
-                                      <ul className="text-xs text-rose-200 space-y-1">
-                                            {data.evidenceAnalysis.detectedRisks?.map((r,i) => <li key={i}>• {r}</li>)}
-                                        </ul>
-                                </div>
-                            </div>
-                        </Card>
-                    )}
-
-                    <Card title="Future State Projection" icon={<Wand2 size={18} className="text-indigo-400"/>}>
-                        <div className="relative aspect-video bg-slate-950 rounded border border-slate-800 overflow-hidden mb-3">
-                            {generatedImage ? (
-                                <img src={generatedImage} alt="Future State" className="w-full h-full object-cover transition-transform duration-1000 hover:scale-105"/>
-                            ) : (
-                                <div className="flex flex-col items-center justify-center h-full text-slate-500">
-                                    <Loader2 className="animate-spin mb-2" />
-                                    <span className="text-xs">Rendering visualization...</span>
-                                </div>
-                            )}
-                        </div>
-                        <p className="text-xs text-slate-500 italic">"{data.visualizationPrompt}"</p>
-                    </Card>
-                </div>
-            </div>
-
-            <Card title="Historical Grounding & Precedents" icon={<Globe size={18} className="text-blue-400"/>}>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {data.diagnosis.historicalPrecedents.map((h, i) => (
-                        <div key={i} className="bg-slate-900 p-4 rounded-lg border border-slate-800">
-                            <div className="flex justify-between items-start mb-2">
-                                <span className="font-bold text-slate-200 text-sm">{h.caseName}</span>
-                                <Badge label={h.outcome} color={h.outcome === 'Success' ? 'emerald' : h.outcome === 'Failure' ? 'rose' : 'amber'} />
-                            </div>
-                            <p className="text-xs text-slate-400 leading-relaxed">{h.relevance}</p>
-                        </div>
-                    ))}
-                </div>
-            </Card>
-        </div>
-    );
-};
-
-const BlueprintView = ({ data }: { data: PolicyAnalysis }) => {
-    return (
-        <div className="animate-in fade-in duration-500">
-             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <BlueprintColumn title="Government Strategy" icon={<LayoutTemplate size={16}/>} color="blue">
-                    <Section title="Policy Changes" items={data.blueprint.government.policyChanges} />
-                    <Section title="Infrastructure" items={data.blueprint.government.infrastructure} />
-                    <div className="mt-4 bg-slate-900 p-3 rounded border border-slate-800">
-                        <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Enforcement</span>
-                        <p className="text-sm text-slate-300">{data.blueprint.government.enforcement}</p>
-                    </div>
-                </BlueprintColumn>
-                <BlueprintColumn title="Society & NGO" icon={<Users size={16}/>} color="emerald">
-                    <Section title="Mobilization Events" items={data.blueprint.society.mobilizationEvents} />
-                    <div className="mt-4 bg-emerald-950/20 p-3 rounded border border-emerald-900/30">
-                         <span className="text-[10px] font-bold text-emerald-400 uppercase block mb-1">NGO Role</span>
-                         <p className="text-sm text-emerald-100">{data.blueprint.society.ngoRole}</p>
-                    </div>
-                </BlueprintColumn>
-                <BlueprintColumn title="Individual Action" icon={<CheckCircle2 size={16}/>} color="amber">
-                    <Section title="Daily Actions" items={data.blueprint.individual.dailyActions} />
-                    <div className="mt-4 bg-amber-950/20 p-3 rounded border border-amber-900/30">
-                         <span className="text-[10px] font-bold text-amber-400 uppercase block mb-1">Incentives</span>
-                         <p className="text-sm text-amber-100">{data.blueprint.individual.incentives}</p>
-                    </div>
-                </BlueprintColumn>
-             </div>
-        </div>
-    );
-}
-
-const TimelineView = ({ data }: { data: PolicyAnalysis }) => {
-    return (
-        <div className="max-w-4xl mx-auto animate-in fade-in duration-500 space-y-8">
-            <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-800 text-center">
-                 <h2 className="text-xl font-bold text-white mb-2">Shadow Timeline Simulation</h2>
-                 <p className="text-slate-400 text-sm">Probabilistic forecasting of 2nd and 3rd order effects over 20 years.</p>
-            </div>
-
-            <div className="relative pl-8 border-l-2 border-slate-800 space-y-12">
-                {data.shadowTimeline.map((event, i) => (
-                    <div key={i} className="relative">
-                        <div className={`absolute -left-[41px] flex items-center justify-center w-10 h-10 rounded-full border-4 border-slate-950 font-bold text-xs ${
-                            event.riskLevel === 'Critical' ? 'bg-rose-600 text-white' : 
-                            event.riskLevel === 'High' ? 'bg-orange-500 text-white' : 
-                            'bg-indigo-600 text-white'
-                        }`}>
-                            +{event.yearOffset}y
-                        </div>
-
-                        <div className={`p-6 rounded-xl border ${
-                            event.riskLevel === 'Critical' ? 'bg-rose-950/10 border-rose-500/50 shadow-[0_0_15px_rgba(244,63,94,0.1)]' : 
-                            event.riskLevel === 'High' ? 'bg-orange-950/10 border-orange-500/50' : 
-                            'bg-slate-900 border-slate-800'
-                        }`}>
-                            <div className="flex justify-between items-start mb-2">
-                                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
-                                    event.impactType === 'Economic' ? 'bg-blue-950/30 text-blue-400' :
-                                    event.impactType === 'Social' ? 'bg-emerald-950/30 text-emerald-400' :
-                                    event.impactType === 'Trust' ? 'bg-purple-950/30 text-purple-400' :
-                                    'bg-slate-800 text-slate-400'
-                                }`}>{event.impactType} Impact</span>
-                                <div className="flex items-center space-x-2">
-                                    <SpeechButton textToRead={event.scenarioDescription} />
-                                    <RiskBadge level={event.riskLevel} />
-                                </div>
-                            </div>
-                            <h3 className="text-lg font-medium text-slate-200 mb-2">{event.scenarioDescription}</h3>
-                            {event.riskLevel === 'Critical' && (
-                                <div className="flex items-center text-rose-400 text-xs font-bold mt-3 animate-pulse">
-                                    <AlertTriangle size={12} className="mr-1.5"/> Critical System Failure Warning
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-}
-
-const StakeholderView = ({ data }: { data: PolicyAnalysis }) => {
-    return (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in duration-500">
-            {data.stakeholders.map((s, i) => (
-                 <StakeholderCard key={i} stakeholder={s} />
-            ))}
-        </div>
-    );
-}
-
-// --- Components ---
-
-const ViabilityBar = ({ data }: { data: PolicyAnalysis }) => (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-slate-900/50 border border-slate-800 p-4 rounded-xl flex items-center space-x-4">
-             <div className="p-2 bg-indigo-950/30 rounded-lg text-indigo-400"><Coins size={20} /></div>
-             <div>
-                 <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Estimated Budget</span>
-                 <div className="text-lg font-bold text-white">{data.viability.costBand}</div>
-             </div>
-        </div>
-        <div className="bg-slate-900/50 border border-slate-800 p-4 rounded-xl flex items-center space-x-4">
-             <div className="p-2 bg-emerald-950/30 rounded-lg text-emerald-400"><ThumbsUp size={20} /></div>
-             <div>
-                 <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Success Probability</span>
-                 <div className="text-lg font-bold text-white">{data.viability.successProbability}%</div>
-             </div>
-        </div>
-        <div className="bg-slate-900/50 border border-slate-800 p-4 rounded-xl flex flex-col justify-center">
-             <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-1">Key Success Factors</span>
-             <div className="flex flex-wrap gap-1">
-                 {data.viability.successFactors.slice(0, 2).map((f, i) => (
-                     <span key={i} className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded truncate max-w-full">{f}</span>
-                 ))}
-             </div>
-        </div>
-    </div>
-);
-
-const BlueprintColumn = ({ title, icon, color, children }: any) => {
-    const borderColor = color === 'blue' ? 'border-blue-500/30' : color === 'emerald' ? 'border-emerald-500/30' : 'border-amber-500/30';
-    const bgHeader = color === 'blue' ? 'bg-blue-950/30 text-blue-400' : color === 'emerald' ? 'bg-emerald-950/30 text-emerald-400' : 'bg-amber-950/30 text-amber-400';
-
-    return (
-        <div className={`bg-slate-900/50 rounded-xl border ${borderColor} h-full`}>
-            <div className={`p-4 border-b border-slate-800 flex items-center space-x-2 rounded-t-xl ${bgHeader}`}>
-                {icon}
-                <h3 className="font-bold text-sm uppercase tracking-wide">{title}</h3>
-            </div>
-            <div className="p-4 space-y-6">
-                {children}
-            </div>
-        </div>
-    );
-};
-
-const Section = ({ title, items }: { title: string, items: string[] }) => (
-    <div>
-        <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">{title}</h4>
-        <ul className="space-y-2">
-            {items.map((item, i) => (
-                <li key={i} className="text-sm text-slate-300 flex items-start">
-                    <span className="w-1 h-1 bg-slate-600 rounded-full mt-2 mr-2 flex-shrink-0"></span>
-                    {item}
-                </li>
-            ))}
-        </ul>
-    </div>
-);
-
-const Card = ({ title, icon, readContent, children }: any) => (
-    <div className="bg-slate-900/50 rounded-xl border border-slate-800 p-6 shadow-sm hover:border-slate-700 transition-colors">
-        <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-2.5">
-                {icon}
-                <h2 className="text-lg font-bold text-slate-50 tracking-tight">{title}</h2>
-            </div>
-            {readContent && <SpeechButton textToRead={readContent} />}
-        </div>
-        {children}
-    </div>
-);
-
-// --- New Speech Component ---
-
-interface SpeechButtonProps {
-    textToRead?: string;
-    customGenerator?: () => Promise<string | null>;
-    label?: string;
-}
-
-const SpeechButton: React.FC<SpeechButtonProps> = ({ textToRead, customGenerator, label }) => {
-    const [isPlaying, setIsPlaying] = useState(false);
-    const [isLoading, setIsLoading] = useState(false);
-    const [audioCtx, setAudioCtx] = useState<AudioContext | null>(null);
-    const [sourceNode, setSourceNode] = useState<AudioBufferSourceNode | null>(null);
-
-    const stop = () => {
-        if (sourceNode) {
-            sourceNode.stop();
-            sourceNode.disconnect();
-        }
-        if (audioCtx) {
-            audioCtx.close();
-        }
-        setSourceNode(null);
-        setAudioCtx(null);
-        setIsPlaying(false);
-    };
-
-    const play = async () => {
-        if (isPlaying) {
-            stop();
-            return;
-        }
-
-        setIsLoading(true);
-        try {
-            const ctx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-            setAudioCtx(ctx);
-
-            let pcmBase64: string | null = null;
-            
-            if (customGenerator) {
-                pcmBase64 = await customGenerator();
-            } else if (textToRead) {
-                pcmBase64 = await generateSpeech(textToRead);
-            }
-
-            if (!pcmBase64) {
-                throw new Error("No audio data");
-            }
-
-            const audioBuffer = await decodeAudioData(decode(pcmBase64), ctx, 24000, 1);
-            const source = ctx.createBufferSource();
-            source.buffer = audioBuffer;
-            source.connect(ctx.destination);
-            
-            source.onended = () => {
-                setIsPlaying(false);
-                setSourceNode(null);
-            };
-            
-            source.start(0);
-            setSourceNode(source);
-            setIsPlaying(true);
-        } catch (e) {
-            console.error(e);
-            stop();
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        return () => {
-            if (audioCtx && audioCtx.state !== 'closed') {
-                audioCtx.close();
-            }
-        };
-    }, [audioCtx]);
-
-    if (label) {
-        return (
-            <button 
-                onClick={play} 
-                disabled={isLoading} 
-                className={`flex items-center space-x-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
-                    isLoading || isPlaying 
-                    ? 'bg-indigo-900/20 text-indigo-300 border border-indigo-500/30' 
-                    : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700 hover:text-slate-200'
-                }`}
-            >
-                {isLoading ? (
-                    <Loader2 size={12} className="animate-spin" />
-                ) : isPlaying ? (
-                    <StopCircle size={12} className="text-rose-400" />
-                ) : (
-                    <Volume2 size={12} />
-                )}
-                <span>{isPlaying ? "Stop Audio" : label}</span>
-            </button>
-        );
-    }
-
-    return (
-        <button 
-            onClick={play}
-            disabled={isLoading}
-            className={`p-1.5 rounded-md transition-all ${
-                isPlaying 
-                ? 'bg-indigo-500/20 text-indigo-400 animate-pulse' 
-                : 'text-slate-500 hover:text-indigo-400 hover:bg-slate-800'
-            }`}
-            title={isPlaying ? "Stop Reading" : "Read Aloud"}
-        >
-             {isLoading ? <Loader2 size={16} className="animate-spin" /> : isPlaying ? <StopCircle size={16} /> : <Volume2 size={16} />}
-        </button>
-    );
-};
-
-const StakeholderCard = ({ stakeholder }: { stakeholder: Stakeholder }) => {
-    return (
-        <div className="bg-slate-900/50 border border-slate-800 p-5 rounded-xl hover:border-indigo-500/30 transition-colors flex flex-col h-full no-print">
-            {/* Header */}
-            <div className="flex justify-between items-start mb-3">
-                <h4 className="font-bold text-slate-100 text-lg leading-tight mr-2">{stakeholder.group}</h4>
-                <div className="flex-shrink-0">
-                    <Badge label={stakeholder.sentiment} color={stakeholder.sentiment === 'Positive' ? 'emerald' : stakeholder.sentiment === 'Negative' ? 'rose' : 'amber'} />
-                </div>
-            </div>
-            
-            {/* Perspective Quote */}
-            <div className="mb-5 bg-slate-900 p-3 rounded-lg border border-slate-800 shadow-inner">
-                <p className="text-xs text-slate-400 italic leading-relaxed">"{stakeholder.concern}"</p>
-            </div>
-
-            {/* Required Actions Checklist */}
-            <div className="flex-1 mb-6">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-3 pb-1 border-b border-slate-800/50">Required Involvement</span>
-                <ul className="space-y-2.5">
-                    {stakeholder.requiredActions?.length > 0 ? (
-                        stakeholder.requiredActions.map((action, i) => (
-                            <li key={i} className="flex items-start text-sm text-slate-300">
-                                <CheckCircle2 size={14} className="mt-0.5 mr-2 text-indigo-500 flex-shrink-0" />
-                                <span className="leading-snug text-slate-200">{action}</span>
-                            </li>
-                        ))
-                    ) : (
-                        <li className="text-xs text-slate-600 italic">No specific actions assigned.</li>
-                    )}
-                </ul>
-            </div>
-
-            {/* Footer */}
-            <div className="mt-auto pt-4 border-t border-slate-800 flex justify-between items-center">
-                <div className="flex flex-col">
-                     <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Influence</span>
-                     <span className="text-sm font-bold text-slate-300">{stakeholder.influence}%</span>
-                </div>
-                
-                <SpeechButton 
-                    label="Hear Stance" 
-                    customGenerator={() => generateStakeholderSpeech(stakeholder)} 
-                />
-            </div>
-        </div>
-    );
-};
-
-const Badge = ({ label, color }: { label: string, color: string }) => {
-    const styleMap: Record<string, string> = {
-        emerald: "bg-emerald-950/30 text-emerald-400 border-emerald-900/50",
-        rose: "bg-rose-950/30 text-rose-400 border-rose-900/50",
-        amber: "bg-amber-950/30 text-amber-400 border-amber-900/50",
-        slate: "bg-slate-800 text-slate-400 border-slate-700"
-    };
-    const style = styleMap[color] || styleMap.slate;
-    return <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded border ${style}`}>{label}</span>;
-};
-
-const RiskBadge = ({ level }: { level: string }) => {
-    const color = level === 'Critical' ? 'rose' : level === 'High' ? 'amber' : level === 'Moderate' ? 'slate' : 'emerald';
-    return <Badge label={level} color={color} />;
-}
-
-const TabButton = ({ active, onClick, label, icon }: any) => (
-    <button onClick={onClick} className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium transition-all duration-200 whitespace-nowrap rounded-md m-0.5 ${active ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'}`}>{icon}<span className="hidden sm:inline">{label}</span></button>
-);
-
-const VideoPlayer = ({ base64, type }: { base64: string, type: string }) => {
-    return (
-        <video controls className="w-full h-full">
-            <source src={`data:${type};base64,${base64}`} type={type} />
-            Your browser does not support the video tag.
-        </video>
-    );
-}
-
-function decode(base64: string) {
-    const binaryString = atob(base64);
-    const len = binaryString.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
-    return bytes;
-}
-  
-async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: number, numChannels: number): Promise<AudioBuffer> {
-    const dataInt16 = new Int16Array(data.buffer);
-    const frameCount = dataInt16.length / numChannels;
-    const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
-    for (let channel = 0; channel < numChannels; channel++) {
-        const channelData = buffer.getChannelData(channel);
-        for (let i = 0; i < frameCount; i++) channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
-    }
-    return buffer;
-}
