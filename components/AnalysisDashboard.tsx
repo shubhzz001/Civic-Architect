@@ -7,7 +7,8 @@ import {
   ShieldCheck, Globe, ExternalLink, LayoutTemplate, FileText, Search, 
   ChevronDown, AlertTriangle, ScanEye, CheckCircle2, Wand2, Volume2, 
   StopCircle, Play, Stethoscope, Clock, GitMerge, Coins, ThumbsUp,
-  FileJson, Printer, Copy, X, Check, Camera, FileDown
+  FileJson, Printer, Copy, X, Check, FileDown, Building2,
+  Camera
 } from 'lucide-react';
 import { generateStakeholderSpeech, generateSpeech } from '../services/geminiService';
 
@@ -18,6 +19,61 @@ interface AnalysisDashboardProps {
 }
 
 type TabView = 'diagnosis' | 'blueprint' | 'timeline' | 'stakeholders';
+
+// @google/genai audio helper: manual base64 decoding for raw PCM data
+function decode(base64: string) {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+// @google/genai audio helper: decode raw PCM data for AudioContext playback
+async function decodeAudioData(
+  data: Uint8Array,
+  ctx: AudioContext,
+  sampleRate: number,
+  numChannels: number,
+): Promise<AudioBuffer> {
+  const dataInt16 = new Int16Array(data.buffer);
+  const frameCount = dataInt16.length / numChannels;
+  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel);
+    for (let i = 0; i < frameCount; i++) {
+      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+    }
+  }
+  return buffer;
+}
+
+// Helper to format text with bolding
+const FormattedText = ({ text, className = "", isPrint = false }: { text: string, className?: string, isPrint?: boolean }) => {
+    if (!text) return null;
+    const parts = text.split(/(\*\*.*?\*\*)/g);
+    return (
+        <p className={className}>
+            {parts.map((part, i) => {
+                if (part.startsWith('**') && part.endsWith('**')) {
+                    const boldText = part.slice(2, -2);
+                    return (
+                        <strong 
+                            key={i} 
+                            className={`font-bold ${isPrint ? 'text-black underline decoration-indigo-200' : 'text-white'}`}
+                        >
+                            {boldText}
+                        </strong>
+                    );
+                }
+                return part;
+            })}
+        </p>
+    );
+};
 
 // --- Sub-components for AnalysisDashboard ---
 
@@ -65,14 +121,26 @@ const ViabilityBar = ({ data }: { data: PolicyAnalysis }) => {
     );
 };
 
-const DiagnosisView = ({ data, generatedImage }: { data: PolicyAnalysis, generatedImage: string | null }) => (
+const DiagnosisView = ({ data, generatedImage, onExport }: { data: PolicyAnalysis, generatedImage: string | null, onExport: () => void }) => (
   <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
     <div className="lg:col-span-2 space-y-8">
-      <section className="bg-slate-900/40 p-6 rounded-xl border border-slate-800">
-        <h3 className="text-indigo-400 font-bold uppercase tracking-widest text-xs mb-4 flex items-center">
-          <BookOpen size={14} className="mr-2" /> Executive Summary
-        </h3>
-        <p className="text-slate-300 leading-relaxed text-lg font-light italic">{data.executiveSummary}</p>
+      <section className="bg-slate-900/40 p-6 rounded-xl border border-slate-800 relative overflow-hidden group">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-indigo-400 font-bold uppercase tracking-widest text-xs flex items-center">
+            <BookOpen size={14} className="mr-2" /> Executive Summary
+          </h3>
+          <button 
+            onClick={onExport}
+            className="flex items-center space-x-1.5 text-[10px] font-black uppercase tracking-widest text-indigo-400 bg-indigo-950/30 px-2 py-1 rounded border border-indigo-500/30 hover:bg-indigo-500 hover:text-white transition-all"
+          >
+            <Printer size={10} />
+            <span>Generate PDF Report</span>
+          </button>
+        </div>
+        <FormattedText 
+            text={data.executiveSummary} 
+            className="text-slate-300 leading-relaxed text-lg font-light italic" 
+        />
       </section>
 
       <section className="bg-slate-900/40 p-6 rounded-xl border border-slate-800">
@@ -176,9 +244,15 @@ const DiagnosisView = ({ data, generatedImage }: { data: PolicyAnalysis, generat
              <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Intelligence Sources</h4>
              <div className="space-y-2">
                 {data.sources.map((s, i) => (
-                  <a key={i} href={s.uri} target="_blank" rel="noopener noreferrer" className="flex items-center text-xs text-indigo-400 hover:text-indigo-300 truncate">
-                    <ExternalLink size={10} className="mr-2 flex-shrink-0" />
-                    <span className="truncate">{s.title}</span>
+                  <a 
+                    key={i} 
+                    href={s.uri} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="flex items-center text-xs text-indigo-400 hover:text-indigo-300 hover:scale-[1.03] hover:translate-x-1 transition-all duration-200 ease-out origin-left group/source"
+                  >
+                    <ExternalLink size={10} className="mr-2 flex-shrink-0 group-hover/source:text-indigo-200" />
+                    <span className="truncate group-hover/source:underline group-hover/source:underline-offset-2">{s.title}</span>
                   </a>
                 ))}
              </div>
@@ -250,7 +324,7 @@ const TimelineView = ({ data }: { data: PolicyAnalysis }) => (
               <div className="bg-slate-900/60 p-6 rounded-xl border border-slate-800 hover:border-indigo-500/30 transition-all shadow-xl shadow-black/40">
                 <div className="flex justify-between items-center mb-3">
                   <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${
-                    event.riskLevel === 'Critical' ? 'bg-red-900/30 text-red-400 border border-red-900/50' : 
+                    event.riskLevel === 'Critical' ? 'bg-red-900/30 text-red-400 border-red-900/50' : 
                     event.riskLevel === 'High' ? 'bg-orange-900/30 text-orange-400 border border-orange-900/50' : 
                     'bg-slate-800 text-slate-400 border border-slate-700'
                   }`}>Risk: {event.riskLevel}</span>
@@ -273,28 +347,41 @@ const TimelineView = ({ data }: { data: PolicyAnalysis }) => (
 
 const StakeholderView = ({ data }: { data: PolicyAnalysis }) => {
     const [playingId, setPlayingId] = useState<string | null>(null);
-    const audioRef = useRef<HTMLAudioElement | null>(null);
+    const audioCtxRef = useRef<AudioContext | null>(null);
+    const sourceRef = useRef<AudioBufferSourceNode | null>(null);
 
     const playSpeech = async (stakeholder: Stakeholder, id: string) => {
         if (playingId === id) {
-            audioRef.current?.pause();
+            if (sourceRef.current) {
+                try { sourceRef.current.stop(); } catch(e) {}
+                sourceRef.current = null;
+            }
             setPlayingId(null);
             return;
         }
 
         try {
+            if (sourceRef.current) {
+                try { sourceRef.current.stop(); } catch(e) {}
+                sourceRef.current = null;
+            }
+
             setPlayingId(id);
             const base64Audio = await generateStakeholderSpeech(stakeholder);
             if (base64Audio) {
-                const audioBlob = new Blob([new Uint8Array(atob(base64Audio).split('').map(c => c.charCodeAt(0)))], { type: 'audio/pcm' });
-                // Note: The TTS API returns raw PCM. For a simple web player, this is simplified.
-                // In a world-class app, we'd use a PCM decoder as in the instructions.
-                // For this demo dashboard, we'll use a placeholder behavior or standard handling.
-                const url = `data:audio/wav;base64,${base64Audio}`; 
-                if (audioRef.current) {
-                    audioRef.current.src = url;
-                    audioRef.current.play();
+                if (!audioCtxRef.current) {
+                    audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({sampleRate: 24000});
                 }
+                const ctx = audioCtxRef.current;
+                const audioBuffer = await decodeAudioData(decode(base64Audio), ctx, 24000, 1);
+                const source = ctx.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(ctx.destination);
+                source.onended = () => {
+                   setPlayingId(prev => prev === id ? null : prev);
+                };
+                source.start();
+                sourceRef.current = source;
             }
         } catch (e) {
             console.error("Speech play failed", e);
@@ -304,7 +391,6 @@ const StakeholderView = ({ data }: { data: PolicyAnalysis }) => {
 
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <audio ref={audioRef} onEnded={() => setPlayingId(null)} className="hidden" />
             {data.stakeholders.map((s, i) => (
                 <div key={i} className="bg-slate-900/40 p-6 rounded-xl border border-slate-800 group hover:border-slate-700 transition-all">
                     <div className="flex justify-between items-start mb-4">
@@ -382,6 +468,7 @@ const JsonViewerModal = ({ data, onClose }: { data: PolicyAnalysis, onClose: () 
 export const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, generatedImage, onReset }) => {
   const [activeTab, setActiveTab] = useState<TabView>('diagnosis');
   const [showJson, setShowJson] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [printContainer, setPrintContainer] = useState<HTMLElement | null>(null);
   const printableRef = useRef<HTMLDivElement>(null);
 
@@ -389,67 +476,49 @@ export const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, gene
     setPrintContainer(document.getElementById('print-mount'));
   }, []);
   
-  const handlePrint = () => {
-    try {
-      window.print();
-    } catch (e) {
-      console.error("Print failed, likely due to sandbox restrictions.", e);
-      handleDownloadReport();
-    }
-  };
-
-  const handleDownloadReport = () => {
+  // Standard PDF generation using html2pdf.js
+  const handleGeneratePDF = () => {
     if (!printableRef.current) return;
     
-    // Get the HTML content of the printable report
-    const content = printableRef.current.innerHTML;
+    setIsExporting(true);
     
-    // Create a standalone HTML document string
-    const fullHtml = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${data.title} - Civic Architect Report</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        body { font-family: 'Inter', sans-serif; margin: 0; padding: 0; background: white; color: black; }
-        @media print {
-            @page { margin: 1.5cm; size: auto; }
-            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-            .no-break { page-break-inside: avoid; }
-            .page-break { page-break-before: always; }
-        }
-        .report-container { max-width: 900px; margin: 0 auto; padding: 2rem; }
-        img { max-width: 100%; height: auto; border-radius: 0.5rem; }
-    </style>
-</head>
-<body>
-    <div class="report-container">
-        ${content}
-    </div>
-    <script>
-        // Auto-trigger print dialog if not sandboxed
-        window.onload = () => {
-            setTimeout(() => {
-                try { window.print(); } catch(e) {}
-            }, 500);
-        };
-    </script>
-</body>
-</html>`;
+    const element = printableRef.current;
+    const opt = {
+      margin: 1,
+      filename: `Civic_Architect_Report_${data.title.toLowerCase().replace(/\s+/g, '_')}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, logging: false },
+      jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
+      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+    };
 
-    // Create a blob and trigger download
+    const clone = element.cloneNode(true) as HTMLElement;
+    clone.style.display = 'block';
+    clone.style.position = 'absolute';
+    clone.style.left = '-9999px';
+    clone.style.width = '800px'; 
+    document.body.appendChild(clone);
+
+    // @ts-ignore (html2pdf is added via script tag in index.html)
+    window.html2pdf().from(clone).set(opt).save().then(() => {
+      document.body.removeChild(clone);
+      setIsExporting(false);
+    }).catch((err: any) => {
+      console.error("PDF Generation failed", err);
+      setIsExporting(false);
+      handleExportHTML();
+    });
+  };
+
+  const handleExportHTML = () => {
+    const content = printableRef.current?.innerHTML;
+    const fullHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><script src="https://cdn.tailwindcss.com"></script><style>body{padding:2rem;font-family:serif;}</style></head><body>${content}</body></html>`;
     const blob = new Blob([fullHtml], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${data.title.toLowerCase().replace(/\s+/g, '-')}-report.html`;
-    document.body.appendChild(link);
+    link.download = `Report_Backup_${data.id}.html`;
     link.click();
-    document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
 
@@ -484,18 +553,14 @@ export const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, gene
                     <FileJson size={18} />
                 </button>
                 <button 
-                    onClick={handleDownloadReport}
-                    className="p-2 text-slate-400 hover:text-indigo-400 hover:bg-slate-800 rounded-md transition-colors border border-transparent hover:border-slate-700"
-                    title="Download Standalone Report (PDF Alternative)"
+                    onClick={handleGeneratePDF}
+                    disabled={isExporting}
+                    className={`p-2 rounded-md transition-colors border border-transparent hover:border-slate-700 flex items-center ${
+                      isExporting ? 'text-indigo-500 cursor-wait' : 'text-slate-400 hover:text-indigo-400 hover:bg-slate-800'
+                    }`}
+                    title="Download Standard PDF Report"
                 >
-                    <FileDown size={18} />
-                </button>
-                <button 
-                    onClick={handlePrint}
-                    className="p-2 text-slate-400 hover:text-indigo-400 hover:bg-slate-800 rounded-md transition-colors border border-transparent hover:border-slate-700"
-                    title="Print Document"
-                >
-                    <Printer size={18} />
+                    {isExporting ? <Loader2 size={18} className="animate-spin" /> : <Printer size={18} />}
                 </button>
             </div>
         </div>
@@ -505,7 +570,7 @@ export const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, gene
       <div className="flex-1 overflow-y-auto p-6 md:p-10 bg-slate-950">
         <div className="max-w-7xl mx-auto space-y-8">
             <ViabilityBar data={data} />
-            {activeTab === 'diagnosis' && <DiagnosisView data={data} generatedImage={generatedImage} />}
+            {activeTab === 'diagnosis' && <DiagnosisView data={data} generatedImage={generatedImage} onExport={handleGeneratePDF} />}
             {activeTab === 'blueprint' && <BlueprintView data={data} />}
             {activeTab === 'timeline' && <TimelineView data={data} />}
             {activeTab === 'stakeholders' && <StakeholderView data={data} />}
@@ -515,9 +580,9 @@ export const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, gene
       {/* JSON Viewer Modal */}
       {showJson && <JsonViewerModal data={data} onClose={() => setShowJson(false)} />}
 
-      {/* Portal to Print Mount */}
+      {/* Hidden container for print/export capture */}
       {printContainer && createPortal(
-          <div ref={printableRef} className="hidden print:block">
+          <div ref={printableRef} className="hidden" aria-hidden="true">
             <PrintableReport data={data} generatedImage={generatedImage} />
           </div>,
           printContainer
@@ -530,43 +595,47 @@ export const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, gene
 // --- Printable Report Component ---
 const PrintableReport = ({ data, generatedImage }: { data: PolicyAnalysis, generatedImage: string | null }) => {
     return (
-        <div className="max-w-4xl mx-auto font-serif text-black leading-relaxed p-12 bg-white">
+        <div className="font-serif text-black leading-relaxed bg-white p-10">
             {/* Header */}
             <div className="border-b-4 border-black pb-8 mb-10">
                 <div className="flex justify-between items-end mb-6">
-                    <h1 className="text-5xl font-black uppercase tracking-tighter text-black leading-none">{data.title}</h1>
+                    <h1 className="text-4xl font-black uppercase tracking-tighter text-black leading-none">{data.title}</h1>
                 </div>
-                <div className="flex justify-between text-xs font-sans font-bold uppercase tracking-widest text-gray-500 border-t-2 pt-4 border-gray-100">
+                <div className="flex justify-between text-[10px] font-sans font-bold uppercase tracking-widest text-gray-400 border-t pt-4">
                     <span className="text-indigo-900">CIVIC ARCHITECT INTELLIGENCE REPORT // CONFIDENTIAL</span>
-                    <span>TIMESTAMP: {new Date(data.createdAt).toLocaleString()}</span>
+                    <span>GENERATED: {new Date(data.createdAt).toLocaleString()}</span>
                 </div>
             </div>
 
             {/* Executive Summary */}
             <section className="mb-12 no-break">
-                <h2 className="text-2xl font-black uppercase border-b-2 border-indigo-900 pb-2 mb-6 text-indigo-900 font-sans tracking-tight">Executive Synthesis</h2>
-                <div className="text-justify mb-8 text-lg leading-relaxed text-gray-900">{data.executiveSummary}</div>
+                <h2 className="text-xl font-black uppercase border-b-2 border-indigo-900 pb-2 mb-6 text-indigo-900 font-sans tracking-tight">Executive Synthesis</h2>
+                <FormattedText 
+                    text={data.executiveSummary} 
+                    className="text-justify mb-8 text-md leading-relaxed text-gray-900 font-serif" 
+                    isPrint 
+                />
                 
-                <div className="bg-gray-50 p-8 border-l-8 border-indigo-600 rounded-r-lg shadow-sm">
-                    <strong className="block mb-3 text-indigo-900 uppercase text-xs font-black tracking-widest font-sans">Root Cause Analysis</strong>
-                    <p className="text-gray-800">{data.diagnosis.rootCause}</p>
+                <div className="bg-gray-50 p-6 border-l-8 border-indigo-600 rounded-r-lg">
+                    <strong className="block mb-2 text-indigo-900 uppercase text-[10px] font-black tracking-widest font-sans">Systemic Diagnosis</strong>
+                    <p className="text-gray-800 text-md italic">"{data.diagnosis.rootCause}"</p>
                 </div>
             </section>
 
-            {/* Diagnostics and Visuals */}
+            {/* Visual Reasoning */}
             <section className="mb-12 no-break">
-                <h2 className="text-2xl font-black uppercase border-b-2 border-indigo-900 pb-2 mb-6 text-indigo-900 font-sans tracking-tight">Forensic Diagnostics</h2>
+                <h2 className="text-xl font-black uppercase border-b-2 border-indigo-900 pb-2 mb-6 text-indigo-900 font-sans tracking-tight">Technical Audit & Vision</h2>
                 <div className="grid grid-cols-2 gap-8">
                    <div>
-                       <h3 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-4 font-sans">Systemic Symptoms</h3>
-                       <ul className="list-disc pl-5 space-y-2">
-                           {data.diagnosis.symptoms.map((s, i) => <li key={i} className="text-gray-800">{s}</li>)}
+                       <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4 font-sans">Risk Factors & Context</h3>
+                       <ul className="list-disc pl-5 space-y-2 text-sm text-gray-800">
+                           {data.diagnosis.symptoms.map((s, i) => <li key={i}>{s}</li>)}
                        </ul>
                    </div>
                    {generatedImage && (
                        <div>
-                           <h3 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-4 font-sans">Architectural Projection</h3>
-                           <img src={generatedImage} alt="Future Vision" className="shadow-md border border-gray-100" />
+                           <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4 font-sans">AI Architectural Projection</h3>
+                           <img src={generatedImage} alt="Future Vision" className="shadow-md border border-gray-100 w-full rounded" />
                        </div>
                    )}
                 </div>
@@ -576,31 +645,29 @@ const PrintableReport = ({ data, generatedImage }: { data: PolicyAnalysis, gener
 
             {/* Blueprint Section */}
             <section className="mb-12 no-break">
-                <h2 className="text-2xl font-black uppercase border-b-2 border-indigo-900 pb-2 mb-6 text-indigo-900 font-sans tracking-tight">Implementation Blueprint</h2>
-                <div className="space-y-8">
+                <h2 className="text-xl font-black uppercase border-b-2 border-indigo-900 pb-2 mb-6 text-indigo-900 font-sans tracking-tight">Implementation Blueprint</h2>
+                <div className="space-y-6">
                    <div className="bg-gray-50 p-6 border rounded-lg">
-                       <h3 className="text-sm font-black uppercase text-indigo-900 mb-3 font-sans">Government & Infrastructure</h3>
-                       <p className="text-gray-800 text-sm mb-4"><strong>Strategic Enforcement:</strong> {data.blueprint.government.enforcement}</p>
-                       <ul className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm list-inside list-square">
+                       <h3 className="text-xs font-black uppercase text-indigo-900 mb-3 font-sans">Institutional Mandates</h3>
+                       <p className="text-gray-800 text-xs mb-3"><strong>Enforcement Strategy:</strong> {data.blueprint.government.enforcement}</p>
+                       <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs list-inside">
                            {data.blueprint.government.policyChanges.concat(data.blueprint.government.infrastructure).map((item, i) => (
-                               <li key={i} className="text-gray-700">{item}</li>
+                               <li key={i} className="text-gray-700">• {item}</li>
                            ))}
                        </ul>
                    </div>
 
-                   <div className="grid grid-cols-2 gap-8">
+                   <div className="grid grid-cols-2 gap-6">
                       <div className="bg-gray-50 p-6 border rounded-lg">
-                          <h3 className="text-sm font-black uppercase text-indigo-900 mb-3 font-sans">Social Mobilization</h3>
-                          <p className="text-xs text-gray-500 mb-3 italic">NGO Role: {data.blueprint.society.ngoRole}</p>
-                          <ul className="text-xs space-y-1 list-inside list-square">
-                              {data.blueprint.society.mobilizationEvents.map((e, i) => <li key={i} className="text-gray-700">{e}</li>)}
+                          <h3 className="text-xs font-black uppercase text-indigo-900 mb-3 font-sans">Social Mobilization</h3>
+                          <ul className="text-[10px] space-y-1">
+                              {data.blueprint.society.mobilizationEvents.map((e, i) => <li key={i} className="text-gray-700">• {e}</li>)}
                           </ul>
                       </div>
                       <div className="bg-gray-50 p-6 border rounded-lg">
-                          <h3 className="text-sm font-black uppercase text-indigo-900 mb-3 font-sans">Individual Incentives</h3>
-                          <p className="text-xs text-gray-500 mb-3 italic">Strategy: {data.blueprint.individual.incentives}</p>
-                          <ul className="text-xs space-y-1 list-inside list-square">
-                              {data.blueprint.individual.dailyActions.map((a, i) => <li key={i} className="text-gray-700">{a}</li>)}
+                          <h3 className="text-xs font-black uppercase text-indigo-900 mb-3 font-sans">Individual Incentives</h3>
+                          <ul className="text-[10px] space-y-1">
+                              {data.blueprint.individual.dailyActions.map((a, i) => <li key={i} className="text-gray-700">• {a}</li>)}
                           </ul>
                       </div>
                    </div>
@@ -609,43 +676,23 @@ const PrintableReport = ({ data, generatedImage }: { data: PolicyAnalysis, gener
 
             {/* Timeline */}
             <section className="mb-12 no-break">
-                <h2 className="text-2xl font-black uppercase border-b-2 border-indigo-900 pb-2 mb-6 text-indigo-900 font-sans tracking-tight">Shadow Timeline (20 Year Forecast)</h2>
-                <div className="border-l-2 border-gray-200 pl-8 space-y-8">
+                <h2 className="text-xl font-black uppercase border-b-2 border-indigo-900 pb-2 mb-6 text-indigo-900 font-sans tracking-tight">Shadow Timeline (20Y Forecast)</h2>
+                <div className="border-l-2 border-gray-200 pl-8 space-y-6">
                     {data.shadowTimeline.map((event, i) => (
                         <div key={i} className="relative">
                             <div className="absolute -left-[41px] top-0 w-4 h-4 rounded-full bg-white border-4 border-indigo-600"></div>
                             <div className="flex justify-between items-start mb-1">
-                                <span className="font-bold text-lg font-sans text-indigo-900">YEAR +{event.yearOffset}</span>
-                                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 font-sans">Impact: {event.impactType}</span>
+                                <span className="font-bold text-md font-sans text-indigo-900">YEAR +{event.yearOffset}</span>
+                                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 font-sans">{event.impactType}</span>
                             </div>
-                            <p className="text-gray-700">{event.scenarioDescription}</p>
+                            <p className="text-gray-700 text-xs leading-relaxed">{event.scenarioDescription}</p>
                         </div>
                     ))}
                 </div>
             </section>
 
-            {/* Stakeholders */}
-            <section className="mb-12 no-break">
-                <h2 className="text-2xl font-black uppercase border-b-2 border-indigo-900 pb-2 mb-6 text-indigo-900 font-sans tracking-tight">Stakeholder Matrix</h2>
-                <div className="grid grid-cols-2 gap-4">
-                    {data.stakeholders.map((s, i) => (
-                        <div key={i} className="border border-gray-200 p-4 rounded-lg bg-white">
-                            <div className="flex justify-between items-center mb-2 border-b pb-1">
-                                <span className="font-bold text-sm uppercase font-sans">{s.group}</span>
-                                <span className="text-[10px] font-bold text-gray-400 font-sans">{s.sentiment}</span>
-                            </div>
-                            <p className="text-xs text-gray-600 italic mb-2">"{s.concern}"</p>
-                            <div className="text-[9px] font-black text-indigo-900 uppercase tracking-widest mb-1 font-sans">Critical Involvement</div>
-                            <ul className="text-[10px] text-gray-500 space-y-0.5">
-                                {s.requiredActions.map((a, j) => <li key={j}>• {a}</li>)}
-                            </ul>
-                        </div>
-                    ))}
-                </div>
-            </section>
-
-            <div className="mt-20 pt-8 border-t border-gray-200 text-center">
-                <p className="text-[10px] font-black uppercase tracking-widest text-gray-300 font-sans">Generated by Civic Architect v1.2.0 // Gemini 3 Pro reasoning model</p>
+            <div className="mt-10 pt-4 border-t border-gray-100 text-center">
+                <p className="text-[9px] font-black uppercase tracking-widest text-gray-300 font-sans">CONFIDENTIAL // CIVIL ARCHITECT V1.2.0 // GEMINI 3 PRO REASONING ENGINE</p>
             </div>
         </div>
     );

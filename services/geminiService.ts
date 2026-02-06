@@ -7,7 +7,7 @@ const analysisSchema: Schema = {
   type: Type.OBJECT,
   properties: {
     title: { type: Type.STRING, description: "A short, professional title for the analysis report." },
-    executiveSummary: { type: Type.STRING, description: "A high-level synthesis of the policy impact." },
+    executiveSummary: { type: Type.STRING, description: "A high-level synthesis of the policy impact. Use Markdown bolding (**keyword**) to highlight critical insights, risks, or primary objectives." },
     
     diagnosis: {
       type: Type.OBJECT,
@@ -151,7 +151,8 @@ Reasoning Framework:
 
 Output:
 - Strictly formatted JSON matching the schema.
-- Tone: Clinical, visionary, data-driven.`;
+- Tonality: Clinical, visionary, data-driven.
+- Formatting Rule: In the 'executiveSummary', use Markdown bolding (**text**) to emphasize keywords, critical risks, and pivotal strategic pillars.`;
 
   const parts: any[] = [
     { text: promptText }
@@ -175,7 +176,7 @@ Output:
         responseSchema: analysisSchema,
         tools: [{ googleSearch: {} }], 
         thinkingConfig: {
-            thinkingBudget: 16000 // Increased for deep diagnostic reasoning
+            thinkingBudget: 16000 
         }
       }
     });
@@ -236,12 +237,10 @@ export const generateImpactImage = async (prompt: string): Promise<string | null
     }
 }
 
-// Fix audio generation modality to use the Modality enum
 export const generateSpeech = async (text: string): Promise<string | null> => {
   if (!process.env.API_KEY) throw new Error("API Key not found");
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  // Use a neutral, authoritative voice for general reading
   const voiceName = 'Aoede'; 
 
   try {
@@ -264,7 +263,6 @@ export const generateSpeech = async (text: string): Promise<string | null> => {
   }
 }
 
-// Fix stakeholder audio generation modality to use the Modality enum
 export const generateStakeholderSpeech = async (stakeholder: Stakeholder): Promise<string | null> => {
   if (!process.env.API_KEY) throw new Error("API Key not found");
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
