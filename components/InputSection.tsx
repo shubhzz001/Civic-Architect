@@ -59,10 +59,8 @@ export const InputSection: React.FC<InputSectionProps> = ({ onAnalyze, isAnalyzi
   return (
     <div className="max-w-4xl mx-auto px-6 py-12 md:py-24 font-sans">
       <div className="text-center mb-12">
-        <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4 leading-tight">
-          <span className="text-[#FF9933]">Architect</span>{' '}
-          <span className="text-white">the</span>{' '}
-          <span className="text-[#138808]">Future</span>
+        <h1 className="text-4xl md:text-5xl font-bold text-slate-400 tracking-tight mb-4 leading-tight">
+          Architect the Future
         </h1>
         <p className="text-lg text-slate-400 max-w-2xl mx-auto leading-relaxed font-light">
           Simulate complex policy outcomes with reasoning-first AI. <br className="hidden md:block"/>
