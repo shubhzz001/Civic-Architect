@@ -1,6 +1,5 @@
-
 import { GoogleGenAI, Type, Schema, Modality } from "@google/genai";
-import { PolicyAnalysis, Source, InputEvidence, Stakeholder } from "../types";
+import { PolicyAnalysis, Source, InputEvidence, Stakeholder, ResearchPaper, NewsArticle } from "../types";
 
 // Define the expected output schema for the analysis
 const analysisSchema: Schema = {
@@ -26,6 +25,38 @@ const analysisSchema: Schema = {
           }
         }
       }
+    },
+
+    researchPapers: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING, description: "Title of the research paper or study." },
+          institution: { type: Type.STRING, description: "The university, research center, or organization that conducted the study (e.g., 'MIT', 'Stanford', 'World Bank')." },
+          year: { type: Type.INTEGER, description: "The year of publication or study completion." },
+          relevance: { type: Type.STRING, description: "How this specific research supports or warns about the current policy proposal." },
+          uri: { type: Type.STRING, description: "Direct link to the research paper, PDF, or scholarly portal (e.g., Google Scholar, JSTOR)." }
+        },
+        required: ["title", "institution", "year", "relevance", "uri"]
+      },
+      description: "A collection of academic and scholarly research papers related to the policy topic."
+    },
+
+    newsArticles: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING, description: "Headline of the news report." },
+          source: { type: Type.STRING, description: "News outlet (e.g., BBC News, CNN, Local Times)." },
+          date: { type: Type.STRING, description: "Month, Year and optionally the time if available." },
+          description: { type: Type.STRING, description: "Short description of the specific problem or pain point reported by users/citizens in this news." },
+          uri: { type: Type.STRING, description: "Direct link to the article." }
+        },
+        required: ["title", "source", "date", "description", "uri"]
+      },
+      description: "Recent news reports highlighting challenges and problems faced by citizens related to this policy area."
     },
 
     blueprint: {
@@ -113,7 +144,7 @@ const analysisSchema: Schema = {
         description: "Analysis of the attached evidence. If no attachment, leave fields empty/default."
     }
   },
-  required: ["title", "executiveSummary", "diagnosis", "blueprint", "shadowTimeline", "viability", "stakeholders", "visualizationPrompt"]
+  required: ["title", "executiveSummary", "diagnosis", "blueprint", "shadowTimeline", "viability", "stakeholders", "visualizationPrompt", "researchPapers", "newsArticles"]
 };
 
 export const analyzePolicy = async (policyText: string, geography: string, attachment?: InputEvidence): Promise<PolicyAnalysis> => {
@@ -134,25 +165,22 @@ ${attachment ? `[EVIDENCE ATTACHED]
 Filename: ${attachment.filename}
 MimeType: ${attachment.mimeType}
 Context: ${attachment.caption || "No caption"}
-INSTRUCTION: Perform a forensic audit on this file. 
-- If VIDEO: Analyze behavioral patterns, traffic flow, and environmental cues over time.
-- If IMAGE: Analyze infrastructure condition, neglect signals, and spatial constraints.
-- Integrate these findings into the 'evidenceAnalysis' and the 'diagnosis'.` : ""}
+INSTRUCTION: Perform a forensic audit on this file.` : ""}
 
 Mission:
 Conduct a deep-chain reasoning simulation to architect the future state of this policy.
 
 Reasoning Framework:
-1. DIAGNOSIS: Separate symptoms from root causes. Use Google Search to find real-world precedents (successes and failures).
-2. BLUEPRINT: Create a coordinated strategy across Government (policy/infra), Society (NGOs), and Individuals (behavior).
-3. SHADOW TIMELINE: Simulate 2nd and 3rd order effects up to 20 years out. Highlight compounding failures.
-4. VIABILITY: Estimate budget bands and success probability based on complexity.
-5. STAKEHOLDERS: Identify key players, including specific political leaders or institutions if relevant to the geography. Define their 'Required Involvement' (actions they must take), not just their sentiment.
+1. DIAGNOSIS: Separate symptoms from root causes. Use Google Search to find real-world precedents.
+2. RESEARCH: Identify 3 academic research papers or university studies relevant to the topic. Extract Title, Institution, Year, and Relevance.
+3. NEWS: Find 3-5 recent news articles that highlight problems, public complaints, or challenges faced by citizens/users related to this policy area. Extract Headline, Source, Date (including time if available), and a short description of the problem reported.
+4. BLUEPRINT: Create a coordinated strategy across Government, Society, and Individuals.
+5. SHADOW TIMELINE: Simulate 2nd and 3rd order effects up to 20 years out.
+6. VIABILITY: Estimate budget bands and success probability.
 
 Output:
 - Strictly formatted JSON matching the schema.
-- Tonality: Clinical, visionary, data-driven.
-- Formatting Rule: In the 'executiveSummary', use Markdown bolding (**text**) to emphasize keywords, critical risks, and pivotal strategic pillars.`;
+- Tonality: Clinical, visionary, data-driven.`;
 
   const parts: any[] = [
     { text: promptText }
@@ -240,9 +268,7 @@ export const generateImpactImage = async (prompt: string): Promise<string | null
 export const generateSpeech = async (text: string): Promise<string | null> => {
   if (!process.env.API_KEY) throw new Error("API Key not found");
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
   const voiceName = 'Aoede'; 
-
   try {
       const response = await ai.models.generateContent({
           model: "gemini-2.5-flash-preview-tts",
@@ -269,11 +295,7 @@ export const generateStakeholderSpeech = async (stakeholder: Stakeholder): Promi
   const voices = ['Puck', 'Kore', 'Fenrir', 'Aoede', 'Charon'];
   const voiceIndex = stakeholder.group.length % voices.length;
   const selectedVoice = voices[voiceIndex];
-
-  const prompt = `Act as a representative of the "${stakeholder.group}". 
-  Your sentiment towards the policy is ${stakeholder.sentiment}.
-  Read the following concern naturally: "${stakeholder.concern}"`;
-
+  const prompt = `Act as a representative of the "${stakeholder.group}".sentiment: ${stakeholder.sentiment}. Concern: "${stakeholder.concern}"`;
   try {
       const response = await ai.models.generateContent({
           model: "gemini-2.5-flash-preview-tts",

@@ -1,15 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { Loader2, BrainCircuit, Search, FileText, CheckCircle2, Server, Scale, Share2 } from 'lucide-react';
+import { Loader2, BrainCircuit, Search, FileText, CheckCircle2, Server, Scale, Share2, Newspaper } from 'lucide-react';
 
 export const LoadingState: React.FC = () => {
   const [step, setStep] = useState(0);
 
   useEffect(() => {
     const intervals = [
-        1500, // Initializing
-        3000, // Search/Grounding
-        4000, // Deep Reasoning
-        2500, // Synthesis
+        1200, // Initializing
+        2000, // Precedents
+        2500, // News/Sentiment
+        3500, // Deep Reasoning
+        2000, // Synthesis
     ];
     
     let current = 0;
@@ -27,9 +28,10 @@ export const LoadingState: React.FC = () => {
 
   const steps = [
     { icon: Server, label: "Initializing Stochastic Model..." },
-    { icon: Search, label: "Grounding in Legal Precedents (Google Search)..." },
+    { icon: Search, label: "Grounding in Legal Precedents..." },
+    { icon: Newspaper, label: "Aggregating Global Citizen Reports & News..." },
     { icon: BrainCircuit, label: "Simulating 2nd Order Economic Effects..." },
-    { icon: Scale, label: "Balancing Stakeholder Equity..." },
+    { icon: Scale, label: "Synthesizing Viability & Impact Metrics..." },
   ];
 
   return (
@@ -47,7 +49,6 @@ export const LoadingState: React.FC = () => {
         </h3>
 
         <div className="space-y-5 relative">
-            {/* Connecting Line */}
             <div className="absolute left-[15px] top-4 bottom-4 w-0.5 bg-slate-800 -z-10"></div>
 
           {steps.map((s, i) => {
@@ -88,8 +89,8 @@ export const LoadingState: React.FC = () => {
             <span>Gemini 3 Pro</span>
             <span className="flex items-center text-indigo-400">
                 <BrainCircuit size={12} className="mr-1" />
-                // Thinking Budget: 8k
-                Thinking...
+                // Thinking Budget: 16k
+                Processing...
             </span>
         </div>
       </div>

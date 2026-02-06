@@ -1,14 +1,13 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { PolicyAnalysis, Stakeholder, TimelineEvent, BlueprintStrategy, Diagnosis } from '../types';
+import { PolicyAnalysis, Stakeholder, TimelineEvent, BlueprintStrategy, Diagnosis, ResearchPaper, NewsArticle } from '../types';
 import { 
   ShieldAlert, TrendingUp, Users, BookOpen, Eye, Loader2, Info, Download, 
   ShieldCheck, Globe, ExternalLink, LayoutTemplate, FileText, Search, 
   ChevronDown, AlertTriangle, ScanEye, CheckCircle2, Wand2, Volume2, 
   StopCircle, Play, Stethoscope, Clock, GitMerge, Coins, ThumbsUp,
   FileJson, Printer, Copy, X, Check, FileDown, Building2,
-  Camera
+  Camera, GraduationCap, Library, Newspaper, MessageSquareWarning
 } from 'lucide-react';
 import { generateStakeholderSpeech, generateSpeech } from '../services/geminiService';
 
@@ -18,7 +17,7 @@ interface AnalysisDashboardProps {
   onReset: () => void;
 }
 
-type TabView = 'diagnosis' | 'blueprint' | 'timeline' | 'stakeholders';
+type TabView = 'diagnosis' | 'blueprint' | 'timeline' | 'stakeholders' | 'research' | 'news';
 
 // @google/genai audio helper: manual base64 decoding for raw PCM data
 function decode(base64: string) {
@@ -93,7 +92,11 @@ const TabButton = ({ active, onClick, label, icon }: { active: boolean, onClick:
 
 const ViabilityBar = ({ data }: { data: PolicyAnalysis }) => {
     const { viability } = data;
-    const colorClass = viability.successProbability > 70 ? 'bg-emerald-500' : viability.successProbability > 40 ? 'bg-amber-500' : 'bg-red-500';
+    const colorClass = viability.successProbability > 70 
+        ? 'bg-emerald-500' 
+        : viability.successProbability > 40 
+            ? 'bg-green-500' 
+            : 'bg-red-500';
     
     return (
         <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-6 flex flex-col md:flex-row items-center justify-between gap-6">
@@ -439,6 +442,77 @@ const StakeholderView = ({ data }: { data: PolicyAnalysis }) => {
     );
 };
 
+const ResearchView = ({ data }: { data: PolicyAnalysis }) => {
+    return (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {data.researchPapers && data.researchPapers.length > 0 ? (
+                data.researchPapers.map((paper, i) => (
+                    <div key={i} className="bg-slate-900/40 p-6 rounded-xl border border-slate-800 flex flex-col hover:border-indigo-500/50 transition-all group">
+                        <div className="flex justify-between items-start mb-4">
+                            <div className="p-2 bg-indigo-950/30 rounded border border-indigo-500/30 text-indigo-400">
+                                <GraduationCap size={18} />
+                            </div>
+                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Academic Evidence</span>
+                        </div>
+                        <h3 className="text-md font-bold text-white mb-2 leading-tight group-hover:text-indigo-300 transition-colors">{paper.title}</h3>
+                        <div className="flex items-center space-x-2 mb-4">
+                            <span className="text-xs font-bold text-indigo-400">{paper.institution}</span>
+                            <span className="h-1 w-1 rounded-full bg-slate-700"></span>
+                            <span className="text-xs font-medium text-slate-500">{paper.year}</span>
+                        </div>
+                        <p className="text-sm text-slate-400 mb-6 flex-1 italic">"{paper.relevance}"</p>
+                        <a 
+                            href={paper.uri} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="flex items-center justify-center space-x-2 w-full py-2 bg-slate-800 hover:bg-indigo-600 text-slate-300 hover:text-white rounded-lg text-xs font-bold transition-all border border-slate-700 hover:border-indigo-500"
+                        >
+                            <Library size={12} />
+                            <span>Access Research</span>
+                            <ExternalLink size={10} />
+                        </a>
+                    </div>
+                ))
+            ) : (
+                <div className="col-span-full py-20 text-center">
+                    <Loader2 className="animate-spin text-indigo-500 mx-auto mb-4" size={32} />
+                    <p className="text-slate-500">Retrieving scholarly precedents...</p>
+                </div>
+            )}
+        </div>
+    );
+};
+
+const NewsView = ({ articles }: { articles: NewsArticle[] }) => {
+    return (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {articles.map((article, i) => (
+                <div key={i} className="bg-slate-900/40 p-6 rounded-xl border border-slate-800 flex flex-col hover:border-red-500/30 transition-all group">
+                    <div className="flex justify-between items-start mb-4">
+                        <div className="flex flex-col">
+                            <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest">{article.source}</h4>
+                            <p className="text-[10px] text-slate-600 font-medium">{article.date}</p>
+                        </div>
+                        <a href={article.uri} target="_blank" rel="noopener noreferrer" className="p-2 text-slate-500 hover:text-white transition-colors">
+                            <ExternalLink size={14} />
+                        </a>
+                    </div>
+                    
+                    <h3 className="text-lg font-bold text-white mb-3 leading-tight group-hover:text-red-300 transition-colors">
+                        {article.title}
+                    </h3>
+                    
+                    <div className="bg-slate-950/50 p-4 rounded-lg border-l-2 border-red-500/40 flex-1">
+                        <p className="text-sm text-slate-300 leading-relaxed italic">
+                            {article.description}
+                        </p>
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+};
+
 const JsonViewerModal = ({ data, onClose }: { data: PolicyAnalysis, onClose: () => void }) => (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
         <div className="bg-slate-900 w-full max-w-4xl max-h-[80vh] rounded-2xl border border-slate-800 shadow-2xl flex flex-col">
@@ -479,9 +553,7 @@ export const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, gene
   // Standard PDF generation using html2pdf.js
   const handleGeneratePDF = () => {
     if (!printableRef.current) return;
-    
     setIsExporting(true);
-    
     const element = printableRef.current;
     const opt = {
       margin: 1,
@@ -491,35 +563,20 @@ export const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, gene
       jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
       pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
     };
-
     const clone = element.cloneNode(true) as HTMLElement;
     clone.style.display = 'block';
     clone.style.position = 'absolute';
     clone.style.left = '-9999px';
     clone.style.width = '800px'; 
     document.body.appendChild(clone);
-
-    // @ts-ignore (html2pdf is added via script tag in index.html)
+    // @ts-ignore
     window.html2pdf().from(clone).set(opt).save().then(() => {
       document.body.removeChild(clone);
       setIsExporting(false);
     }).catch((err: any) => {
       console.error("PDF Generation failed", err);
       setIsExporting(false);
-      handleExportHTML();
     });
-  };
-
-  const handleExportHTML = () => {
-    const content = printableRef.current?.innerHTML;
-    const fullHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><script src="https://cdn.tailwindcss.com"></script><style>body{padding:2rem;font-family:serif;}</style></head><body>${content}</body></html>`;
-    const blob = new Blob([fullHtml], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Report_Backup_${data.id}.html`;
-    link.click();
-    URL.revokeObjectURL(url);
   };
 
   return (
@@ -540,26 +597,15 @@ export const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, gene
         <div className="flex items-center space-x-4 w-full md:w-auto overflow-x-auto">
             <nav className="flex bg-slate-900 p-1 rounded-lg border border-slate-800">
                 <TabButton active={activeTab === 'diagnosis'} onClick={() => setActiveTab('diagnosis')} label="Diagnosis" icon={<Stethoscope size={14} />} />
+                <TabButton active={activeTab === 'news'} onClick={() => setActiveTab('news')} label="News" icon={<Newspaper size={14} />} />
+                <TabButton active={activeTab === 'research'} onClick={() => setActiveTab('research')} label="Research" icon={<GraduationCap size={14} />} />
                 <TabButton active={activeTab === 'blueprint'} onClick={() => setActiveTab('blueprint')} label="Blueprint" icon={<GitMerge size={14} />} />
                 <TabButton active={activeTab === 'timeline'} onClick={() => setActiveTab('timeline')} label="Timeline" icon={<Clock size={14} />} />
                 <TabButton active={activeTab === 'stakeholders'} onClick={() => setActiveTab('stakeholders')} label="Stakeholders" icon={<Users size={14} />} />
             </nav>
             <div className="flex items-center space-x-2 pl-2 border-l border-slate-800">
-                <button 
-                    onClick={() => setShowJson(true)}
-                    className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded-md transition-colors border border-transparent hover:border-slate-700"
-                    title="View JSON Source"
-                >
-                    <FileJson size={18} />
-                </button>
-                <button 
-                    onClick={handleGeneratePDF}
-                    disabled={isExporting}
-                    className={`p-2 rounded-md transition-colors border border-transparent hover:border-slate-700 flex items-center ${
-                      isExporting ? 'text-indigo-500 cursor-wait' : 'text-slate-400 hover:text-indigo-400 hover:bg-slate-800'
-                    }`}
-                    title="Download Standard PDF Report"
-                >
+                <button onClick={() => setShowJson(true)} className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded-md transition-colors border border-transparent hover:border-slate-700" title="View JSON Source"><FileJson size={18} /></button>
+                <button onClick={handleGeneratePDF} disabled={isExporting} className={`p-2 rounded-md transition-colors border border-transparent hover:border-slate-700 flex items-center ${isExporting ? 'text-indigo-500 cursor-wait' : 'text-slate-400 hover:text-indigo-400 hover:bg-slate-800'}`} title="Download PDF Report">
                     {isExporting ? <Loader2 size={18} className="animate-spin" /> : <Printer size={18} />}
                 </button>
             </div>
@@ -571,23 +617,16 @@ export const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, gene
         <div className="max-w-7xl mx-auto space-y-8">
             <ViabilityBar data={data} />
             {activeTab === 'diagnosis' && <DiagnosisView data={data} generatedImage={generatedImage} onExport={handleGeneratePDF} />}
+            {activeTab === 'news' && <NewsView articles={data.newsArticles} />}
+            {activeTab === 'research' && <ResearchView data={data} />}
             {activeTab === 'blueprint' && <BlueprintView data={data} />}
             {activeTab === 'timeline' && <TimelineView data={data} />}
             {activeTab === 'stakeholders' && <StakeholderView data={data} />}
         </div>
       </div>
 
-      {/* JSON Viewer Modal */}
       {showJson && <JsonViewerModal data={data} onClose={() => setShowJson(false)} />}
-
-      {/* Hidden container for print/export capture */}
-      {printContainer && createPortal(
-          <div ref={printableRef} className="hidden" aria-hidden="true">
-            <PrintableReport data={data} generatedImage={generatedImage} />
-          </div>,
-          printContainer
-      )}
-
+      {printContainer && createPortal(<div ref={printableRef} className="hidden" aria-hidden="true"><PrintableReport data={data} generatedImage={generatedImage} /></div>, printContainer)}
     </div>
   );
 };
@@ -596,7 +635,6 @@ export const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, gene
 const PrintableReport = ({ data, generatedImage }: { data: PolicyAnalysis, generatedImage: string | null }) => {
     return (
         <div className="font-serif text-black leading-relaxed bg-white p-10">
-            {/* Header */}
             <div className="border-b-4 border-black pb-8 mb-10">
                 <div className="flex justify-between items-end mb-6">
                     <h1 className="text-4xl font-black uppercase tracking-tighter text-black leading-none">{data.title}</h1>
@@ -607,22 +645,39 @@ const PrintableReport = ({ data, generatedImage }: { data: PolicyAnalysis, gener
                 </div>
             </div>
 
-            {/* Executive Summary */}
             <section className="mb-12 no-break">
                 <h2 className="text-xl font-black uppercase border-b-2 border-indigo-900 pb-2 mb-6 text-indigo-900 font-sans tracking-tight">Executive Synthesis</h2>
-                <FormattedText 
-                    text={data.executiveSummary} 
-                    className="text-justify mb-8 text-md leading-relaxed text-gray-900 font-serif" 
-                    isPrint 
-                />
-                
-                <div className="bg-gray-50 p-6 border-l-8 border-indigo-600 rounded-r-lg">
-                    <strong className="block mb-2 text-indigo-900 uppercase text-[10px] font-black tracking-widest font-sans">Systemic Diagnosis</strong>
-                    <p className="text-gray-800 text-md italic">"{data.diagnosis.rootCause}"</p>
+                <FormattedText text={data.executiveSummary} className="text-justify mb-8 text-md leading-relaxed text-gray-900 font-serif" isPrint />
+            </section>
+
+            <section className="mb-12 no-break">
+                <h2 className="text-xl font-black uppercase border-b-2 border-indigo-900 pb-2 mb-6 text-indigo-900 font-sans tracking-tight">Reported Citizen Challenges (News)</h2>
+                <div className="space-y-4">
+                    {data.newsArticles.map((article, i) => (
+                        <div key={i} className="border-b border-gray-100 pb-4">
+                            <h3 className="text-sm font-bold text-gray-900">{article.title}</h3>
+                            <p className="text-[10px] text-red-800 font-sans uppercase font-black tracking-widest">{article.source} // {article.date}</p>
+                            <p className="text-xs text-gray-600 italic mt-1 leading-relaxed">"{article.description}"</p>
+                        </div>
+                    ))}
                 </div>
             </section>
 
-            {/* Visual Reasoning */}
+            <section className="mb-12 no-break">
+                <h2 className="text-xl font-black uppercase border-b-2 border-indigo-900 pb-2 mb-6 text-indigo-900 font-sans tracking-tight">Scholarly Evidence & Studies</h2>
+                <div className="space-y-4">
+                    {data.researchPapers.map((paper, i) => (
+                        <div key={i} className="border-b border-gray-100 pb-4">
+                            <h3 className="text-sm font-bold text-gray-900">{paper.title}</h3>
+                            <p className="text-[10px] text-indigo-800 font-sans uppercase font-black tracking-widest">{paper.institution} // {paper.year}</p>
+                            <p className="text-xs text-gray-600 italic mt-1 leading-relaxed">"{paper.relevance}"</p>
+                        </div>
+                    ))}
+                </div>
+            </section>
+
+            <div className="page-break"></div>
+
             <section className="mb-12 no-break">
                 <h2 className="text-xl font-black uppercase border-b-2 border-indigo-900 pb-2 mb-6 text-indigo-900 font-sans tracking-tight">Technical Audit & Vision</h2>
                 <div className="grid grid-cols-2 gap-8">
@@ -640,60 +695,6 @@ const PrintableReport = ({ data, generatedImage }: { data: PolicyAnalysis, gener
                    )}
                 </div>
             </section>
-
-            <div className="page-break"></div>
-
-            {/* Blueprint Section */}
-            <section className="mb-12 no-break">
-                <h2 className="text-xl font-black uppercase border-b-2 border-indigo-900 pb-2 mb-6 text-indigo-900 font-sans tracking-tight">Implementation Blueprint</h2>
-                <div className="space-y-6">
-                   <div className="bg-gray-50 p-6 border rounded-lg">
-                       <h3 className="text-xs font-black uppercase text-indigo-900 mb-3 font-sans">Institutional Mandates</h3>
-                       <p className="text-gray-800 text-xs mb-3"><strong>Enforcement Strategy:</strong> {data.blueprint.government.enforcement}</p>
-                       <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs list-inside">
-                           {data.blueprint.government.policyChanges.concat(data.blueprint.government.infrastructure).map((item, i) => (
-                               <li key={i} className="text-gray-700">• {item}</li>
-                           ))}
-                       </ul>
-                   </div>
-
-                   <div className="grid grid-cols-2 gap-6">
-                      <div className="bg-gray-50 p-6 border rounded-lg">
-                          <h3 className="text-xs font-black uppercase text-indigo-900 mb-3 font-sans">Social Mobilization</h3>
-                          <ul className="text-[10px] space-y-1">
-                              {data.blueprint.society.mobilizationEvents.map((e, i) => <li key={i} className="text-gray-700">• {e}</li>)}
-                          </ul>
-                      </div>
-                      <div className="bg-gray-50 p-6 border rounded-lg">
-                          <h3 className="text-xs font-black uppercase text-indigo-900 mb-3 font-sans">Individual Incentives</h3>
-                          <ul className="text-[10px] space-y-1">
-                              {data.blueprint.individual.dailyActions.map((a, i) => <li key={i} className="text-gray-700">• {a}</li>)}
-                          </ul>
-                      </div>
-                   </div>
-                </div>
-            </section>
-
-            {/* Timeline */}
-            <section className="mb-12 no-break">
-                <h2 className="text-xl font-black uppercase border-b-2 border-indigo-900 pb-2 mb-6 text-indigo-900 font-sans tracking-tight">Shadow Timeline (20Y Forecast)</h2>
-                <div className="border-l-2 border-gray-200 pl-8 space-y-6">
-                    {data.shadowTimeline.map((event, i) => (
-                        <div key={i} className="relative">
-                            <div className="absolute -left-[41px] top-0 w-4 h-4 rounded-full bg-white border-4 border-indigo-600"></div>
-                            <div className="flex justify-between items-start mb-1">
-                                <span className="font-bold text-md font-sans text-indigo-900">YEAR +{event.yearOffset}</span>
-                                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 font-sans">{event.impactType}</span>
-                            </div>
-                            <p className="text-gray-700 text-xs leading-relaxed">{event.scenarioDescription}</p>
-                        </div>
-                    ))}
-                </div>
-            </section>
-
-            <div className="mt-10 pt-4 border-t border-gray-100 text-center">
-                <p className="text-[9px] font-black uppercase tracking-widest text-gray-300 font-sans">CONFIDENTIAL // CIVIL ARCHITECT V1.2.0 // GEMINI 3 PRO REASONING ENGINE</p>
-            </div>
         </div>
     );
 };

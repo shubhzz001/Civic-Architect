@@ -20,6 +20,22 @@ export interface Source {
   uri: string;
 }
 
+export interface ResearchPaper {
+  title: string;
+  institution: string; // The university, research center, or place of study
+  year: number;
+  relevance: string; // Why this research matters to the simulation
+  uri: string;
+}
+
+export interface NewsArticle {
+  title: string;
+  source: string; // The news organization (e.g., NYT, BBC)
+  date: string; // Date/Time string (e.g., "2024-10-12 14:30")
+  description: string; // Short summary of the reported problem/user pain point
+  uri: string;
+}
+
 export interface EvidenceAnalysis {
   mediaType: 'image' | 'video' | 'pdf' | 'none';
   visualContext: string; // Description of what the AI sees
@@ -87,6 +103,8 @@ export interface PolicyAnalysis {
   blueprint: BlueprintStrategy;
   shadowTimeline: TimelineEvent[];
   viability: Viability;
+  researchPapers: ResearchPaper[]; // Academic module
+  newsArticles: NewsArticle[]; // Public pain point module
   
   // Legacy/Visuals
   stakeholders: Stakeholder[];
