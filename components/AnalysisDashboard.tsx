@@ -102,7 +102,7 @@ const ViabilityBar = ({ data }: { data: PolicyAnalysis }) => {
         <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-6 flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex-1 space-y-2 w-full">
                 <div className="flex justify-between items-end mb-1">
-                    <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Viability Score</span>
+                    <span className="text-xs font-bold text-orange-500 uppercase tracking-widest">Viability Score</span>
                     <span className={`text-2xl font-black ${colorClass.replace('bg-', 'text-')}`}>{viability.successProbability}%</span>
                 </div>
                 <div className="w-full bg-slate-800 rounded-full h-3 overflow-hidden">
